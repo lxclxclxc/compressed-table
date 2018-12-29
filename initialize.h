@@ -199,6 +199,11 @@ int64_t temp_lba;
 
 
 
+    //lxc for compression
+    int flag_read_missing_translation_page_finished;// 0 means can get new traceline. 1 is on the contrary
+
+
+
     double ssd_energy;                   //SSD的能耗，是时间和芯片数的函数,能耗因子
     int64_t current_time;                //记录系统时间
     int64_t next_request_time;

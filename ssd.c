@@ -18,6 +18,59 @@ Hao Luo         2011/01/01        2.0           Change               luohao13568
 #include "ssd.h"
 #define WRITE_RATIO_IN_REQUEST_QUEUE  0.3
 
+/*************************get mapping table********************************/
+int flush_mappingtable_into_files(struct ssd_info *ssd, char* filename)
+{
+    long int page_numbers=0;
+    struct dram_info *dram = ssd->dram;
+
+    int temp_i = 0;
+
+
+
+    FILE* fp = fopen(filename, "w");
+
+
+    int page_num = ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die * ssd->parameter->die_chip * ssd->parameter->chip_num;
+
+    printf("page_num is %d\n", page_num);
+
+    struct entry *map_entry;            //该项是映射表结构体指针,each entry indicate a mapping information
+
+    unsigned int pn;                //物理号，既可以表示物理页号，也可以表示物理子页号，也可以表示物理块号
+
+    for (temp_i = 0; temp_i < page_num; temp_i ++){
+
+        fprintf(fp, "%d ", dram->map->map_entry[temp_i].pn);  
+
+
+    }
+
+
+    fclose(fp);
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*************************get mapping table********************************/
+
+
+
 int printf_gc_node_information(struct gc_operation* gc_node)
 {
 
@@ -514,8 +567,7 @@ struct ssd_info *simulate(struct ssd_info *ssd) {
 #ifdef DEBUG //lxcv1
     printf( "flag is %d\n" ,flag);
 #endif
-
-        if (flag == 1) {
+      if (flag == 1) {
             //printf("once\n");
 
         //printf_every_chip_static_subrequest(ssd);
@@ -555,8 +607,8 @@ struct ssd_info *simulate(struct ssd_info *ssd) {
 int get_requests(struct ssd_info *ssd) {
     char buffer[200];
 
-    int64_t lsn = 0;
-    int device, size, ope, large_lsn, i = 0, j = 0;
+    int64_t large_lsn, lsn = 0;
+    int device, size, ope, i = 0, j = 0;
     struct request *request1;
     struct sub_request *temp_sub;
     int flag = 1;
@@ -613,7 +665,7 @@ int get_requests(struct ssd_info *ssd) {
     *large_lsn: channel下面有多少个subpage，即多少个sector。overprovide系数：SSD中并不是所有的空间都可以给用户使用，
     *比如32G的SSD可能有10%的空间保留下来留作他用，所以乘以1-provide
     ***********************************************************************************************************/
-    large_lsn = (int) ((ssd->parameter->subpage_page * ssd->parameter->page_block * ssd->parameter->block_plane *
+    large_lsn = (long int) ((ssd->parameter->subpage_page * ssd->parameter->page_block * ssd->parameter->block_plane *
                         ssd->parameter->plane_die * ssd->parameter->die_chip * ssd->parameter->chip_num) *
                        (1 - ssd->parameter->overprovide));
     lsn = lsn % large_lsn;
@@ -665,16 +717,20 @@ int get_requests(struct ssd_info *ssd) {
 //                }// end of channel loop
                 return -1;
         }
-
-
+// lxc for compression
+if(ssd->flag_read_missing_translation_page_finished == 1){
+            printf("waiting for the missing of translation mapping pages!!\n");
+            fseek(ssd->tracefile, filepoint, 0);
+                return -1;
+        }
         ssd->current_time = time_t;
 //        if(ssd->request_queue_length > 0){// this is wrong, for if gc happen, there will no write. so request will stay here.and maybe add another program.
 //            printf("error is too biggest!!!\n");
 //        }
 
-    printf("ssdcurrent_time  nter nearest_event_time is MAX_INIT64 and ssd->current_time is %lld\n", ssd->current_time );
+    //printf("ssdcurrent_time  nter nearest_event_time is MAX_INIT64 and ssd->current_time is %lld\n", ssd->current_time );
 #ifdef DEBUG //lxcv1
-    printf("ssdcurrent_time  nter nearest_event_time is MAX_INIT64 and ssd->current_time is %lld\n", ssd->current_time );
+    //printf("ssdcurrent_time  nter nearest_event_time is MAX_INIT64 and ssd->current_time is %lld\n", ssd->current_time );
 #endif
 
         //if (ssd->request_queue_length>ssd->parameter->queue_length)    //如果请求队列的长度超过了配置文件中所设置的长度
@@ -713,7 +769,7 @@ int get_requests(struct ssd_info *ssd) {
 #endif
 
             if (ssd->request_queue_length >= ssd->parameter->queue_length) {
-                printf("here request long enough!!!, length is %d\n", ssd->request_queue_length);
+                //printf("here request long enough!!!, length is %d\n", ssd->request_queue_length);
 
                 fseek(ssd->tracefile, filepoint, 0);
                 ssd->current_time = nearest_event_time;
@@ -770,94 +826,94 @@ int get_requests(struct ssd_info *ssd) {
 //            ///*****************judging for times by queue stuffing with only write requests***********************///
         ///*****************judging for times by queue stuffing with only write requests***********************///
             // judging for times stuffing by full queue only with write request.
-            unsigned int temp_i;
-            struct request *request1;
-            struct gc_operation *temp_gc_node;
-            unsigned int temp_gc_sign = 0;
-            if(ssd->request_queue != NULL){
-                request1 = ssd->request_queue;
-            }
-            for(temp_i = 0; temp_i < ssd->request_queue_length; temp_i ++){
-
-                if(request1->operation != 0 ){
-                    request1 = request1->next_node;
-                }else{
-
-                    break;
-                }
-            }//end of for
-            if(temp_i == ssd->request_queue_length){
-                if(ssd->temp_lba != lsn_for_record ){
-                    ssd->temp_lba = lsn_for_record ;
-
-                    ssd->interference_stuffed_length ++;
-                    printf("fullreaddeal inner subrequest, current_time %lld, temp_lba = %lld, interference_stuffed_length is %d \n", ssd->current_time, ssd->temp_lba, ssd->interference_stuffed_length);
-
-                    for(temp_i = 0; temp_i < ssd->parameter->channel_number; temp_i ++ ){
-
-                        temp_gc_node = ssd->channel_head[i].gc_command;
-                        if(temp_gc_node != NULL){
-                            temp_gc_sign = 1;
-                            break;
-                        }
-                    }
-                    if(temp_gc_sign == 1){
-                        ssd->interference_stuffed_length_during_gc ++;
-                        temp_gc_sign = 0;
-                        printf("fullreadrequeststuffed during gc is %d\n", ssd->interference_stuffed_length_during_gc);
-                    }
-                }
-            }
-
-
-            ///*****************judging for times by queue stuffing with only write requests***********************///
-
-
-
-
-            ///*****************judging for times by queue stuffing with only write requests***********************///
-            // judging for times stuffing by full queue only with write request.
-          //  unsigned int temp_i;
-          //  struct request *request1;
-          //  struct gc_operation *temp_gc_node;
-          //  unsigned int temp_gc_sign = 0;
-            if(ssd->request_queue != NULL){
-                request1 = ssd->request_queue;
-            }
-            for(temp_i = 0; temp_i < ssd->request_queue_length; temp_i ++){
-
-                if(request1->operation != 1 ){
-                    request1 = request1->next_node;
-                }else{
-
-                    break;
-                }
-            }//end of for
-            if(temp_i == ssd->request_queue_length){
-                if(ssd->temp_lba != lsn_for_record ){
-                    ssd->temp_lba = lsn_for_record ;
-
-                    ssd->interference_stuffed_length ++;
-                    printf("fullwritedeal inner subrequest, current_time %lld, temp_lba = %lld, interference_stuffed_length is %d \n", ssd->current_time, ssd->temp_lba, ssd->interference_stuffed_length);
-
-                    for(temp_i = 0; temp_i < ssd->parameter->channel_number; temp_i ++ ){
-
-                        temp_gc_node = ssd->channel_head[i].gc_command;
-                        if(temp_gc_node != NULL){
-                            temp_gc_sign = 1;
-                            break;
-                        }
-                    }
-                    if(temp_gc_sign == 1){
-                        ssd->interference_stuffed_length_during_gc ++;
-                        temp_gc_sign = 0;
-                        printf("fullwritestuffed during gc is %d\n", ssd->interference_stuffed_length_during_gc);
-                    }
-                }
-            }
-
-
-            ///*****************judging for times by queue stuffing with only write requests***********************///
+//            unsigned int temp_i;
+//            struct request *request1;
+//            struct gc_operation *temp_gc_node;
+//            unsigned int temp_gc_sign = 0;
+//            if(ssd->request_queue != NULL){
+//                request1 = ssd->request_queue;
+//            }
+//            for(temp_i = 0; temp_i < ssd->request_queue_length; temp_i ++){
+//
+//                if(request1->operation != 0 ){
+//                    request1 = request1->next_node;
+//                }else{
+//
+//                    break;
+//                }
+//            }//end of for
+//            if(temp_i == ssd->request_queue_length){
+//                if(ssd->temp_lba != lsn_for_record ){
+//                    ssd->temp_lba = lsn_for_record ;
+//
+//                    ssd->interference_stuffed_length ++;
+//                    printf("fullreaddeal inner subrequest, current_time %lld, temp_lba = %lld, interference_stuffed_length is %d \n", ssd->current_time, ssd->temp_lba, ssd->interference_stuffed_length);
+//
+//                    for(temp_i = 0; temp_i < ssd->parameter->channel_number; temp_i ++ ){
+//
+//                        temp_gc_node = ssd->channel_head[i].gc_command;
+//                        if(temp_gc_node != NULL){
+//                            temp_gc_sign = 1;
+//                            break;
+//                        }
+//                    }
+//                    if(temp_gc_sign == 1){
+//                        ssd->interference_stuffed_length_during_gc ++;
+//                        temp_gc_sign = 0;
+//                        printf("fullreadrequeststuffed during gc is %d\n", ssd->interference_stuffed_length_during_gc);
+//                    }
+//                }
+//            }
+//
+//
+//            ///*****************judging for times by queue stuffing with only write requests***********************///
+//
+//
+//
+//
+//            ///*****************judging for times by queue stuffing with only write requests***********************///
+//            // judging for times stuffing by full queue only with write request.
+//          //  unsigned int temp_i;
+//          //  struct request *request1;
+//          //  struct gc_operation *temp_gc_node;
+//          //  unsigned int temp_gc_sign = 0;
+//            if(ssd->request_queue != NULL){
+//                request1 = ssd->request_queue;
+//            }
+//            for(temp_i = 0; temp_i < ssd->request_queue_length; temp_i ++){
+//
+//                if(request1->operation != 1 ){
+//                    request1 = request1->next_node;
+//                }else{
+//
+//                    break;
+//                }
+//            }//end of for
+//            if(temp_i == ssd->request_queue_length){
+//                if(ssd->temp_lba != lsn_for_record ){
+//                    ssd->temp_lba = lsn_for_record ;
+//
+//                    ssd->interference_stuffed_length ++;
+//                    printf("fullwritedeal inner subrequest, current_time %lld, temp_lba = %lld, interference_stuffed_length is %d \n", ssd->current_time, ssd->temp_lba, ssd->interference_stuffed_length);
+//
+//                    for(temp_i = 0; temp_i < ssd->parameter->channel_number; temp_i ++ ){
+//
+//                        temp_gc_node = ssd->channel_head[i].gc_command;
+//                        if(temp_gc_node != NULL){
+//                            temp_gc_sign = 1;
+//                            break;
+//                        }
+//                    }
+//                    if(temp_gc_sign == 1){
+//                        ssd->interference_stuffed_length_during_gc ++;
+//                        temp_gc_sign = 0;
+//                        printf("fullwritestuffed during gc is %d\n", ssd->interference_stuffed_length_during_gc);
+//                    }
+//                }
+//            }
+//
+//
+//            ///*****************judging for times by queue stuffing with only write requests***********************///
 
 
 
@@ -866,13 +922,22 @@ int get_requests(struct ssd_info *ssd) {
 
 
                 return -1;
-            } else {
+            }
+            
+            // lxc for compression
+            if(ssd->flag_read_missing_translation_page_finished == 1){
+                printf("waiting for the missing of translation mapping pages!!\n");
+                fseek(ssd->tracefile, filepoint, 0);
+                return -1;
+            }
+            
+    //        else {
                 ssd->current_time = time_t;
 #ifdef DEBUG_CURR_TIME 
                 printf("ssdcurrenttime  DEBUG_CURR_TIME is %lld in get_requests function request_queue<=parameter queue_length \n",ssd->current_time);
 #endif
 
-            }
+      //      }
         }
     }
 
@@ -947,7 +1012,7 @@ int get_requests(struct ssd_info *ssd) {
 
     filepoint = ftell(ssd->tracefile);
     fgets(buffer, 200, ssd->tracefile);    //寻找下一条请求的到达时间
-    sscanf(buffer, "%lld %d %d %d %d", &time_t, &device, &lsn, &size, &ope);
+    sscanf(buffer, "%lld %d %lld %d %d", &time_t, &device, &lsn, &size, &ope);
     ssd->next_request_time = time_t;
     fseek(ssd->tracefile, filepoint, 0);
 
@@ -1718,6 +1783,9 @@ for (i = 0; i < ssd->parameter->channel_number; i++) {
         }
     }
 }
+flush_mappingtable_into_files(ssd, "map_after_run.txt");
+
+
     fprintf(ssd->outputfile, "\n");
     fprintf(ssd->outputfile, "\n");
     fprintf(ssd->outputfile, "---------------------------statistic data---------------------------\n");
