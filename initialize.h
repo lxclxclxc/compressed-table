@@ -16,7 +16,7 @@ Chao Ren        2011/07/01        2.0           Change               529517386@q
 Hao Luo         2011/01/01        2.0           Change               luohao135680@gmail.com
 *****************************************************************************************************************************/
 #ifndef INITIALIZE_H
-#define INITIALIZE_H 10000
+#define INITIALIZE_H
 
 #include <stdio.h>
 #include <string.h>
@@ -200,8 +200,9 @@ int64_t temp_lba;
 
 
     //lxc for compression
-    int flag_read_missing_translation_page_finished;// 0 means can get new traceline. 1 is on the contrary
+int missing_mapping_and_cannot_get_traceline;// 0 means can get new traceline. 1 is on the contrary
 
+int changing_size_during_the_runnig_size_in_byte_mostshouldbeadding;//this memeber only to record the changing at the delete_subs_in_this_requests now,should be increasing, later, we will add gc part size changing
 
 
     double ssd_energy;                   //SSD的能耗，是时间和芯片数的函数,能耗因子
@@ -245,6 +246,7 @@ int64_t temp_lba;
     unsigned int update_read_count;      //记录因为更新操作导致的额外读出操作
 
     char parameterfilename[30];
+    char fp_number_subrequests_txt_name[30];
     char tracefilename[30];
     char outputfilename[30];
     char statisticfilename[30];
@@ -254,6 +256,7 @@ int64_t temp_lba;
     FILE *tracefile;
     FILE *statisticfile;
     FILE *statisticfile2;
+    FILE * fp_number_subrequests_txt;
 
     struct parameter_value *parameter;   //SSD参数因子
     struct dram_info *dram;
@@ -378,6 +381,86 @@ struct page_info {                      //lpn记录该物理页存储的逻辑�
 };
 
 
+struct local {
+    unsigned int channel;
+    unsigned int chip;
+    unsigned int die;
+    unsigned int plane;
+    unsigned int block;
+    unsigned int page;
+    unsigned int sub_page;
+};
+
+
+
+//lxc for compression
+/*******************************************************************/
+
+typedef enum {
+
+    DFTL_DIR_EMPTY = 0,
+    DFTL_DIR_FLASH = 0x100,
+    DFTL_DIR_DRAM = 0x200,
+    DFTL_DIR_CLEAN = DFTL_DIR_DRAM | 0x1,
+    DFTL_DIR_DIRTY = DFTL_DIR_DRAM | 0x2,
+}dir_stat;
+
+enum BDBM_DFTL_PAGE_STATUS{
+    DFTL_PAGE_NOT_EXIST = 0,
+    DFTL_PAGE_NOT_MAPPED,
+        DFTL_PAGE_VALID,
+        DFTL_PAGE_INVALID,
+        DFTL_PAGE_INVALID_ADDR = -1, 
+
+};
+typedef struct {
+char status;
+struct local phyaddr;
+
+}mapping_entry_t;
+//dir content definition GTD part.
+typedef struct {
+
+unsigned long id;
+dir_stat status;
+struct local  phyaddr; //dir's physicallocaton
+mapping_entry_t * me; // here is an array for entries in one dir. also it is not one translation page,but it can be a translation page.
+int is_under_load;
+}directory_slot_t;
+
+
+
+
+//cmt content definition
+typedef struct {
+struct buffer_info *buffer_DFTL;// tree header (tAVLTree* type) 
+struct buffer_info *buffer_DFTL_UNCOM;// tree header (tAVLTree* type) 
+
+unsigned long mapping_entry_size;
+unsigned long nr_entries_per_dir_slot;
+unsigned long nr_total_dir_slots;
+unsigned long max_cached_dir_slots_sizein_byte;//
+unsigned long now_cached_dir_slots_sizein_byte;//
+//for entries not translation pages
+unsigned long max_cached_entries_sizein_byte;//
+unsigned long now_cached_entries_sizein_byte;//
+//for uncompression
+//.....compression area....//....uncompression area....//
+//.........................//..........................//
+unsigned long uncompression_max_cached_dir_slots_sizein_byte;//
+unsigned long uncompression_now_cached_dir_slots_sizein_byte;//
+
+directory_slot_t* dir; // always maintained in DRAM;
+//struct _bi_list*  write_wait_for_merge;//this memeber used for accomodating the write requests's changing.very important!!!!!
+//for no any waitting time for compression and uncompression here
+unsigned int* compression_size;
+unsigned int* compression_state;// 0 means no compression, 1 means compression state
+unsigned int* compression_dirty;// only 1 means dirty. so not = 1 means clean.
+
+
+}dftl_mapping_table_t;
+
+
 struct dram_info {
     unsigned int dram_capacity;
     int64_t current_time;
@@ -386,9 +469,16 @@ struct dram_info {
     struct map_info *map;
     struct buffer_info *buffer;
 
+
+    //lxc for compression
+    dftl_mapping_table_t* mt; // only data buffer is in dram, but the mappingtable buffer is in dram->mt.
+    //struct buffer_info_for_DFTL *buffer_DFTL;
+
 };
 
 
+
+/*******************************************************************/
 /*********************************************************************************************
 *buffer中的已写回的页的管理方法:在buffer_info中维持一个队列:written。这个队列有队首，队尾。
 *每次buffer management中，请求命中时，这个group要移到LRU的队首，同时看这个group中是否有已
@@ -403,11 +493,30 @@ typedef struct buffer_group {
     struct buffer_group *LRU_link_next;    // next node in LRU list
     struct buffer_group *LRU_link_pre;    // previous node in LRU list
 
-    unsigned int group;                 //the first data logic sector number of a group stored in buffer
+    unsigned int group;                 //the first data logic sector number of a group stored in buffer// or other lpn value or translation page number and so on.
     unsigned int stored;                //indicate the sector is stored in buffer or not. 1 indicates the sector is stored and 0 indicate the sector isn't stored.EX.  00110011 indicates the first, second, fifth, sixth sector is stored in buffer.
     unsigned int dirty_clean;           //it is flag of the data has been modified, one bit indicates one subpage. EX. 0001 indicates the first subpage is dirty
     int flag;                            //indicates if this node is the last 20% of the LRU list
 } buf_node;
+
+
+//lxc for compression
+typedef struct buffer_group_for_DFTL {
+    TREE_NODE node;                     //树节点的结构一定要放在用户自定义结构的最前面，注意!
+    struct buffer_group *LRU_link_next;    // next node in LRU list
+    struct buffer_group *LRU_link_pre;    // previous node in LRU list
+
+    unsigned int group;                 //the first data logic sector number of a group stored in buffer
+    unsigned char* stored;                //indicate the real translation page 
+    unsigned int this_node_content_size;//indicate the translation page size in this node; 
+    unsigned int dirty_clean;           //it is flag of the data has been modified, one bit indicates one subpage. EX. 0001 indicates the first subpage is dirty
+    int flag;                            //indicates if this node is the last 20% of the LRU list
+} buf_node_for_DFTL;
+
+
+
+
+
 
 
 struct dram_parameter {
@@ -446,14 +555,45 @@ struct request {
     int64_t response_time;
     double energy_consumption;         //记录该请求的能量消耗，单位为uJ
 
-    struct sub_request *subs;          //链接到属于该请求的所有子请求
+    struct sub_request *subs;          //链接到属于该请求的所有子请求 // we put all subrequests here, containing mappingtable relevant subrequests.
     struct request *next_node;         //指向下一个请求结构体
+    //lxc for compression, belows are all for mappingtable operation.
+
+    struct sub_request * evict_sub_request; // evicting write subrequsts //but we never use this memeber
+    struct sub_request * fetch_sub_request; // fetching read subrequests //but we never use this member
+
+    // we use _bi_list to record these mapping relevant subrequests' lpn value and state here.
+    struct _bi_list* should_evict_lpn_data; 
+    struct _bi_list* missing_in_data_buffer_lpn_data;
+    struct _bi_list* missing_in_DFTL_buffer_lpn_data;
+
+    //these 4 signs are dealing with mapping relevant subrequests.
+
+    unsigned int total_wait_evict; // 1 means needing wait, 0 do not have to wait or finishing evicting.
+    unsigned int total_wait_fetch_mappingtable; // 1 means needing fetching, 0 dont have to fetch or finish fetching
+    unsigned int create_or_notyet_evict_subrequests;// 1 means already create, 0 means not yet.
+    unsigned int create_or_notyet_fetch_subrequests;// 1 means already create, 0 means not yet.
+    unsigned int create_or_notyet_normal_subrequests;// 1 means already create, 0 means not yet.
+    unsigned int entry_evict_page_number;
+    unsigned int entry_fetch_page_number;
+
+    //these are for compression_mapping
+
+    //only for COMPRESSION_MAPPING 
+    int hit_in_uncompression_buffer_number;
+    struct _bi_list* compression_to_uncompression;
+    int if_need_movement_between_com_and_uncom_flag_and_page_numbers;// 0 means no page, other number means the real number of pages. here is the total pages for the cost time calculation!!!!!!
+	int finished_movement_between_com_and_uncom_flag;//the flag of above.
+    int the_number_of_evicting_from_uncom_to_com; //0 means no pages, other number means the real page numbers.
+
+
 };
 
 
 struct sub_request {
     unsigned int lpn;                  //这里表示该子请求的逻辑页号
-    unsigned int ppn;                  //分配那个物理子页给这个子请求。在multi_chip_page_mapping中，产生子页请求时可能就知道psn的值，其他时候psn的值由page_map_read,page_map_write等FTL最底层函数产生。
+    //unsigned int ppn;                  //分配那个物理子页给这个子请求。在multi_chip_page_mapping中，产生子页请求时可能就知道psn的值，其他时候psn的值由page_map_read,page_map_write等FTL最底层函数产生。
+    int ppn;
     unsigned int operation;            //表示该子请求的类型，除了读1 写0，还有擦除，two plane等操作
     int size;
 //lxcprogram
@@ -479,6 +619,16 @@ struct sub_request {
    int64_t slack_time;
    int last_sign;
 
+   //lxc for compression  //the wait_fetch_mappingtable_sign parameter should be assigned 1 whether it is evict or fetch!!!
+
+   unsigned int wait_evict_sign; // 1 means needing wait, 0 do not have to wait or finishing evicting.
+   unsigned int wait_fetch_mappingtable_sign; // 1 means needing fetching, 0 dont have to fetch or finish fetching
+unsigned int wait_evict_sign_finished; // 1 means finished
+unsigned int wait_fetch_mappingtable_sign_finished; // 1 means finished
+
+//#ifdef COMPRESSION_MAPPING 
+unsigned int compression_cost_add_flag; // 1 means this subrequest need add compression cost time; the time value is COMPRESSION_COST_TIME_ONE_PAGE
+//#endif
 };
 
 
@@ -565,16 +715,6 @@ struct entry {
 };
 
 
-struct local {
-    unsigned int channel;
-    unsigned int chip;
-    unsigned int die;
-    unsigned int plane;
-    unsigned int block;
-    unsigned int page;
-    unsigned int sub_page;
-};
-
 
 struct gc_info {
     int64_t begin_time;            //记录一个plane什么时候开始gc操作的
@@ -651,6 +791,8 @@ struct ssd_info *initialize_channels(struct ssd_info *ssd);
 
 struct dram_info *initialize_dram(struct ssd_info *ssd);
 
+//lxc for compression
+ dftl_mapping_table_t* dftl_create_mapping_table (struct ssd_info *ssd);
 #endif
 
 

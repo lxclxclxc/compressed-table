@@ -19,6 +19,27 @@ Hao Luo         2011/01/01        2.0           Change               luohao13568
 #include "flash.h"
 #include "ssd.h"
 #define NUMBER_OF_WRITE_ITERATION 3
+
+//lxc for compression
+void arrange_the_location_by_lpn(struct ssd_info* ssd, struct sub_request* sub_req)
+{
+    int location_before = -1;
+    int temp_total_plane = (ssd->parameter->channel_number) * (ssd->parameter->chip_channel[0]) * (ssd->parameter->die_chip) * (ssd->parameter->plane_die);
+
+    location_before = sub_req->lpn % temp_total_plane;//step1: get the location in different plane
+    //step2, get detailed location by location_before value.
+    sub_req->location->channel = location_before % ( (ssd->parameter->channel_number)*(ssd->parameter->chip_channel[0]) ) % (ssd->parameter->channel_number);// %24
+    sub_req->location->chip = location_before % ( (ssd->parameter->channel_number)*(ssd->parameter->chip_channel[0]) ) / (ssd->parameter->channel_number);// /24
+
+    sub_req->location->die = location_before / ( (ssd->parameter->channel_number)*(ssd->parameter->chip_channel[0]) ) / (ssd->parameter->plane_die);//   /24/2 
+
+    sub_req->location->plane = location_before / ( (ssd->parameter->channel_number)*(ssd->parameter->chip_channel[0]) ) % (ssd->parameter->plane_die); // /24%2
+    //    sub_req->location->block = (ppn / temp_total_plane) / (ssd->parameter->page_block);
+    //    sub_req->location->page = (ppn / temp_total_plane) % (ssd->parameter->page_block);
+
+}//end of a arrange_the_location_by_lpn
+
+
 /**********************
 *这个函数只作用于写请求
 ***********************/
@@ -151,6 +172,8 @@ if(ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queu
 		*是静态分配方式，所以可以将这个子请求的最终channel，chip，die，plane全部得出
 		*总共有0,1,2,3,4,5,这六种静态分配方式。
 		****************************************************************************/
+
+
 #ifdef DEBUGSUSPEND
         printf("here is static_allocation in allocate location....,and strategy is %d, \n", ssd->parameter->static_allocation);
 #endif
@@ -165,6 +188,8 @@ if(ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queu
                 break;
             }
             case 1: {
+
+                        printf("in case 1\n");
                 sub_req->location->channel = sub_req->lpn % channel_num;
                 sub_req->location->chip = (sub_req->lpn / channel_num) % chip_num;
                 sub_req->location->die = (sub_req->lpn / (chip_num * channel_num)) % die_num;
@@ -173,10 +198,12 @@ if(ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queu
                 break;
             }
             case 2: {
-                sub_req->location->channel = sub_req->lpn % channel_num;
-                sub_req->location->chip = (sub_req->lpn / (plane_num * channel_num)) % chip_num;
-                sub_req->location->die = (sub_req->lpn / (plane_num * chip_num * channel_num)) % die_num;
-                sub_req->location->plane = (sub_req->lpn / channel_num) % plane_num;
+                        printf("in case 2\n");
+                        arrange_the_location_by_lpn(ssd, sub_req);
+                //sub_req->location->channel = sub_req->lpn % channel_num;
+                //sub_req->location->chip = (sub_req->lpn / (plane_num * channel_num)) % chip_num;
+                //sub_req->location->die = (sub_req->lpn / (plane_num * chip_num * channel_num)) % die_num;
+                //sub_req->location->plane = (sub_req->lpn / channel_num) % plane_num;
                 break;
             }
             case 3: {
@@ -205,15 +232,15 @@ if(ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queu
             default :
                 return ERROR;
 
-        }
+        }//end of switch. after switching we have location, but we should judging whether there is update here .
 
 #ifdef DEBUGSUSPEND
         printf("after static allocation.....now, write request created in channel %d, chip %d, die %d, plane %d\n",sub_req->location->channel,sub_req->location->chip,sub_req->location->die, sub_req->location->plane);
 #endif
+//lxc for compression
 
-
-        if (ssd->dram->map->map_entry[sub_req->lpn].state !=
-            0) {                                                                              /*这个写回的子请求的逻辑页不可以覆盖之前被写回的数据 需要产生读请求*/
+        if ( (ssd->dram->map->map_entry[sub_req->lpn].state !=
+            0) && (sub_req->wait_evict_sign == 0) ) {                                                                              /*这个写回的子请求的逻辑页不可以覆盖之前被写回的数据 需要产生读请求*/
             if ((sub_req->state & ssd->dram->map->map_entry[sub_req->lpn].state) !=
                 ssd->dram->map->map_entry[sub_req->lpn].state) {
 #ifdef DEBUGSUSPEND
@@ -229,6 +256,9 @@ if(ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queu
                 if (update == 0x0) {
 #ifdef DEBUGSUSPEND
                     printf("lxclxc, wrong in creating update read for write .\n");
+					while(1){
+
+					}
 #endif
                     return ERROR;
                 }
@@ -241,6 +271,9 @@ if(ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queu
 
                     printf("lxc, write's update lpn %d, size %d, request %lld, operation %d has wrong now\n", sub_req->lpn,sub_req->size, sub_req,sub_req->operation);
                     printf("lxclxc, wrong in creating update read for write .\n");
+					while(1){
+
+					}
                 }
                 update->location = location;
                 update->begin_time = ssd->current_time;
@@ -298,9 +331,9 @@ printf("added read here is channel [%d], chip [%d],has the tail address %lld,upd
                     printf("lxclxclxc_updatelocation wrong\n");
                 }
 
-                if(update->lpn > 16777216){
-                    printf("lxclxclxc_lpnwrong in now\n");
-                }
+//                if(update->lpn > 16777216){
+//                    printf("lxclxclxc_lpnwrong in now\n");
+//                }
 
                 printf("now channel %d, chip %d length is %d,  head address %lld, tail address %lld , sub %lld\n", location->channel, location->chip, ssd->channel_head[location->channel].chip_head[location->chip].chip_read_queue_length, ssd->channel_head[location->channel].subs_r_head,ssd->channel_head[location->channel].subs_r_tail, update);
 
@@ -317,9 +350,10 @@ printf("new creat read update  location is channel %d, chip %d, die %d, plane %d
     }
 
 if(sub_req->location == NULL){
-//#ifdef DEBUGSUSPEND  //lxcv1
-printf("new creat write location is channel %d, chip %d, die %d, plane %d\n",sub_req->location->channel,sub_req->location->chip,sub_req->location->die,sub_req->location->plane);
-//#endif
+    printf("new creat write location is channel %d, chip %d, die %d, plane %d\n",sub_req->location->channel,sub_req->location->chip,sub_req->location->die,sub_req->location->plane);
+    while(1){
+
+    }
 }
 //lxcprogram_gc
 ssd->channel_head[sub_req->location->channel].chip_head[sub_req->location->chip].chip_write_queue_length ++;
@@ -336,6 +370,8 @@ printf("channel[%d], chip[%d], write length add one is [%d]\n",sub_req->location
             ssd->channel_head[sub_req->location->channel].subs_w_head = sub_req;
         }else{
             printf("writewrong\n");
+            while(1){
+            }
         }
     }
 
@@ -396,7 +432,10 @@ insert2buffer(struct ssd_info *ssd, unsigned int lpn, int state, struct sub_requ
 #endif
 
             write_back_count = sector_count - free_sector;
+
+            if(write_back_count > 0){
             ssd->dram->buffer->write_miss_hit = ssd->dram->buffer->write_miss_hit + write_back_count;
+            }
             while (write_back_count > 0) {
                 sub_req = NULL;
                 sub_req_state = ssd->dram->buffer->buffer_tail->stored;
@@ -660,6 +699,8 @@ Status write_page(struct ssd_info *ssd, unsigned int channel, unsigned int chip,
     return SUCCESS;
 }
 
+
+
 /**********************************************
 *这个函数的功能是根据lpn，size，state创建子请求
 **********************************************/
@@ -670,6 +711,13 @@ creat_sub_request(struct ssd_info *ssd, unsigned int lpn, int size, unsigned int
     struct channel_info *p_ch = NULL;
     struct local *loc = NULL;
     unsigned int flag = 0;
+    int page_num_temp = ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die * ssd->parameter->die_chip * ssd->parameter->chip_num;
+
+
+    //lxc for compression
+//    struct buffer_group * buffer_node, key;
+
+
 
     sub = (struct sub_request *) malloc(sizeof(struct sub_request));                        /*申请一个子请求的结构*/
     alloc_assert(sub, "sub_request");
@@ -677,6 +725,10 @@ creat_sub_request(struct ssd_info *ssd, unsigned int lpn, int size, unsigned int
 
     if (sub == NULL) {
         return NULL;
+        ssdsim_msg("malloc subrequest wrong");
+        while(1){
+
+        }
     }
     sub->location = NULL;
     sub->next_node = NULL;
@@ -695,18 +747,52 @@ printf("enter creat_sub_request.!!!!!!!once one buffer->tail element.so the req 
 	*有的话，新子请求就不必再执行了，将新的子请求直接赋为完成
 	**************************************************************************************/
     if (operation == READ) {
+
+////*********************************lxc for compression***********************************//
+////here is for read to get loc parameter from mappint table
+//key.group = lpn;
+//buffer_node = (struct buffer_group*) avlTreeFind(ssd->dra->buffer_DFTL, (TREE_NODE *) &key);
+//
+//if(){//translation page is not found
+//
+//    fetch_mapping_table();
+//
+//}else{//just get corresponding ppn
+//
+//    get_location();
+//}
+//
+////*********************************lxc for compression***********************************//
+
+
         loc = find_location(ssd, ssd->dram->map->map_entry[lpn].pn);
 
 //        printf("added read sub %lld, its location is %lld\n",sub, loc);
        if(loc == 0x0){
 
-           printf("lxclxclxc,lpn %d, size %d, request %lld, operation %d has wrong now\n", lpn, size, req, operation);
+           printf("normal read, lxclxclxc,lpn %d, size %d, request %lld, operation %d has wrong now\n", lpn, size, req, operation);
+		   while(1){
+
+		   }
        }
-       if(lpn > 16777216){
-           printf("lxclxclxc_lpnwrong in now\n");
+       if(lpn > page_num_temp){
+           printf("lpn %d > total_page_num %d now\n",lpn, page_num_temp);
+		   while(1){
+
+		   }
        }
+	   //lxc for compression
+	 
+if(req->if_need_movement_between_com_and_uncom_flag_and_page_numbers != 0){
+sub->compression_cost_add_flag = req->if_need_movement_between_com_and_uncom_flag_and_page_numbers * COMPRESSION_COST_TIME_ONE_PAGE;
+
+}
+
+
+
         sub->location = loc;
-        sub->begin_time = ssd->current_time;
+        //sub->begin_time = ssd->current_time + sub->compression_cost_add_flag;
+        sub->begin_time = ssd->current_time ;
         sub->current_state = SR_WAIT;
         sub->current_time = MAX_INT64;
         sub->next_state = SR_R_C_A_TRANSFER;
@@ -765,7 +851,10 @@ ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_re
                 p_ch->subs_r_head = sub;
                 p_ch->subs_r_tail = sub;
             }else{
-                printf("lxclxclxc, read added wrong now\n");
+                printf(" read added wrong now\n");
+				while(1){
+
+				}
             }
                 
 //                if(ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length != 1){
@@ -775,6 +864,9 @@ ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_re
 //printf("now channel %d, chip %d length is %d,  head address %lld, tail address %lld , sub %lld\n", sub->location->channel, sub->location->chip, ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length, ssd->channel_head[sub->location->channel].subs_r_head,ssd->channel_head[sub->location->channel].subs_r_tail, sub);
   if(sub->location == NULL){
                     printf("lxclxclxc_readlocation wrong\n");
+                    while(1){
+
+                    }
                 }
 
 //printf_every_chip_read_subrequest(ssd);
@@ -794,12 +886,55 @@ printf("read dont have to be inserted 1000 now\n");
             sub->next_state_predict_time = ssd->current_time + 1000;
             sub->complete_time = ssd->current_time + 1000;
         }
+traceError_msg("subrequest,time debug: normal read, lpn is %d, begin time %lld", sub->lpn, sub->begin_time);
     }
         /*************************************************************************************
 	*写请求的情况下，就需要利用到函数allocate_location(ssd ,sub)来处理静态分配和动态分配了
 	**************************************************************************************/
     else if (operation == WRITE) {
+	   //lxc for compression
+	 
+if(req->if_need_movement_between_com_and_uncom_flag_and_page_numbers != 0){
+sub->compression_cost_add_flag = req->if_need_movement_between_com_and_uncom_flag_and_page_numbers * COMPRESSION_COST_TIME_ONE_PAGE;
+
+}
+
+
+
         sub->ppn = 0;
+        sub->operation = WRITE;
+        sub->location = (struct local *) malloc(sizeof(struct local));
+        alloc_assert(sub->location, "sub->location");
+        memset(sub->location, 0, sizeof(struct local));
+
+        sub->current_state = SR_WAIT;
+        sub->current_time = ssd->current_time;
+        sub->lpn = lpn;
+        sub->size = size;
+        sub->state = state;
+        //sub->begin_time = ssd->current_time + sub->compression_cost_add_flag;
+        sub->begin_time = ssd->current_time;
+
+        if (allocate_location(ssd, sub) == ERROR) {
+            printf("lxc, must mark here, create write request fail!!\n");
+			while(1){
+
+			}
+            free(sub->location);
+            sub->location = NULL;
+            free(sub);
+            sub = NULL;
+            return NULL;
+        }
+
+traceError_msg("subrequest,time debug: normal write, lpn is %d, begin time %lld", sub->lpn, sub->begin_time);
+//lxc for compression. for mappingtable write
+
+    } else if (operation == MAPPINGTABLE_WRITE ){
+        sub->wait_evict_sign = 1;
+        sub->wait_fetch_mappingtable_sign = 1;
+
+        sub->ppn = -1;
         sub->operation = WRITE;
         sub->location = (struct local *) malloc(sizeof(struct local));
         alloc_assert(sub->location, "sub->location");
@@ -814,6 +949,9 @@ printf("read dont have to be inserted 1000 now\n");
 
         if (allocate_location(ssd, sub) == ERROR) {
             printf("lxc, must mark here, create write request fail!!\n");
+			while(1){
+
+			}
             free(sub->location);
             sub->location = NULL;
             free(sub);
@@ -821,7 +959,81 @@ printf("read dont have to be inserted 1000 now\n");
             return NULL;
         }
 
-    } else {
+traceError_msg("subrequest,time debug: mappingtable_write, lpn is %d, begin time %lld", sub->lpn, sub->begin_time);
+//lxc for compression. for mappingtable read
+    }else if(operation == MAPPINGTABLE_READ){
+        sub->wait_fetch_mappingtable_sign = 1;
+
+        //lxc for compression. changed the find_location for read
+        //loc = find_location(ssd, ssd->dram->map->map_entry[lpn].pn);
+        loc = find_location(ssd, lpn);//here is only want to get the lpn's fixed location
+        if(loc == 0x0){
+            printf("MAPPINGTABLE_READ,lpn %d, size %d, request %lld, operation %d has wrong now\n", lpn, size, req, operation);
+            while(1){
+
+            }
+
+        }
+        loc->block = 0;
+        loc->page = 0;
+        //        printf("added read sub %lld, its location is %lld\n",sub, loc);
+        //        here should add new restriction for MAPPINGTABLE_READ
+        if(lpn > page_num_temp){
+            printf("should limitted another situation in the future.\n");
+            while(1){
+            }
+        }
+        sub->location = loc;
+        sub->begin_time = ssd->current_time;
+        sub->current_state = SR_WAIT;
+        sub->current_time = MAX_INT64;
+        sub->next_state = SR_R_C_A_TRANSFER;
+        sub->next_state_predict_time = MAX_INT64;
+        sub->lpn = lpn;
+        sub->size = size;                                                               /*需要计算出该子请求的请求大小*/
+
+        ssdsim_msg("sub -<> location is channel %d, chip %d, die %d, plane %d, sub address %lld", sub->location->channel, sub->location->chip, sub->location->die, sub->location->plane, sub);
+        p_ch = &ssd->channel_head[loc->channel];
+        //lxc for compression
+        // sub->ppn = ssd->dram->map->map_entry[lpn].pn;
+        sub->ppn = -2;//it seems no useful here...but!!but , to find the chip's register value, here should be the same on go_one_step's add_reg_ppn value.!!-2 is for mappingtable read. -1 is for mappingtable write.
+        sub->operation = READ;
+        //lxc for compression. this state is full all the time for the mappingtable page
+        //sub->state = (ssd->dram->map->map_entry[lpn].state & 0x7fffffff);
+        sub->state = 15;//value of 0xf here 
+        sub_r = p_ch->subs_r_head; 
+
+        //before appending sub into fixed channel, we must modify the channel's subrequest number, since the number is for the futhur sub's complete deleting
+
+        ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length ++;
+        //*******************appending it after the appointed channel//
+        if( ( p_ch->subs_r_head != NULL) && (p_ch->subs_r_tail != NULL)){
+            p_ch->subs_r_tail->next_node = sub;
+            p_ch->subs_r_tail = sub;
+        } else if((p_ch->subs_r_head == NULL) && (p_ch->subs_r_head == NULL)){
+
+            p_ch->subs_r_head = sub;
+            p_ch->subs_r_tail = sub;
+        }else{
+            printf("lxclxclxc, read added wrong now\n");
+            while(1){
+
+            }
+        }
+
+
+        if(sub->location == NULL){
+            printf("lxclxclxc_readlocation wrong\n");
+            while(1){
+
+            }
+        }
+
+        traceError_msg("opps!!!!MAPPINGTABLE_READ here means reading never fetch here should happen !!!!we just can stop here to verify it.subrequest,time debug: mappingtable_read, lpn is %d, begin time %lld", sub->lpn, sub->begin_time);
+
+    }else
+    
+    {
         printf("opps!, never happen\n");
         free(sub->location);
         sub->location = NULL;
@@ -832,7 +1044,7 @@ printf("read dont have to be inserted 1000 now\n");
     }
 
     return sub;
-}
+}//end of creat_sub_request
 
 /******************************************************
 *函数的功能是在给出的channel，chip，die上面寻找读子请求
@@ -849,8 +1061,41 @@ find_read_sub_request(struct ssd_info *ssd, unsigned int channel, unsigned int c
 #ifdef DEBUG
         //printf("find channel %d, chip %d, die %d, now the existing register_ppn is %lld, if ppn is -1, that means no useful\n", address_ppn);
 #endif
+        //lxc for compression
+        if(address_ppn == -2){
 
-        if (address_ppn != -1) {
+            sub = ssd->channel_head[channel].subs_r_head;
+            if((sub->wait_fetch_mappingtable_sign == 1)&&(sub->next_state == SR_R_DATA_TRANSFER)){
+                return sub;
+
+            }
+            while ((sub->wait_fetch_mappingtable_sign != 1) && (sub->next_node != NULL)) {
+
+            if((sub->next_node->wait_fetch_mappingtable_sign == 1)&&(sub->next_node->next_state == SR_R_DATA_TRANSFER)){
+            //    if (sub->next_node->ppn == address_ppn) {
+                    p = sub->next_node;
+                    //lxcprogram_gc original wrong.
+                    return p;
+
+
+                    if (p->next_node == NULL) {
+                        sub->next_node = NULL;
+                        ssd->channel_head[channel].subs_r_tail = sub;
+                    } else {
+                        sub->next_node = p->next_node;
+                    }
+                    sub = p;
+                    break;
+                }
+                sub = sub->next_node;
+            }//end of while
+        }//end of address_ppn = -2;
+
+
+
+
+
+        if ((address_ppn != -1)&&(address_ppn != -2)) {
             sub = ssd->channel_head[channel].subs_r_head;
             if (sub->ppn == address_ppn) {
                 //lxcprogram_gc!! original wrong.
@@ -904,7 +1149,8 @@ struct sub_request *find_write_sub_request(struct ssd_info *ssd, unsigned int ch
     {
         sub = ssd->subs_w_head;
         while (sub != NULL) {
-            if (sub->current_state == SR_WAIT) {
+			//lxc for compression
+            if ((sub->current_state == SR_WAIT)&&(sub->begin_time <= ssd->current_time)) {
                 if (sub->update != NULL)                                                      /*如果有需要提前读出的页*/
                 {
                     if ((sub->update->current_state == SR_COMPLETE) || ((sub->update->next_state == SR_COMPLETE) &&
@@ -1215,13 +1461,38 @@ printf("statistic_suspendsion_write, 0\n");
                         sub->complete_time = sub->next_state_predict_time;
                         sub->next_state = SR_COMPLETE;
 
-
+//lxc for compression
+//here get_ppn is normal subrequest's operation.since write subrequest here, we cannot use wait_fetch_mappingtable_sign, this value!!! 
+if(sub->wait_evict_sign == 0){
                         get_ppn(ssd, sub->location->channel, sub->location->chip, sub->location->die, sub->location->plane, sub);
+}
+//
+//if(sub->wait_fetch_mappingtable_sign == 1){
+//
+//
+//             ssdsim_msg("in write complete, we will assign sub %lld, completed mapping things", sub);
+//    assign_rightvalue_for_completed_mappingread_subrequest(sub);
+//}
+
+//lxc for compression
+//since here is write process dealing, here, we just judging sub's wait_evict_sign !!
+if(sub->wait_evict_sign == 1){
+    if(sub->wait_fetch_mappingtable_sign != 1){
+        ssdsim_msg("serious wrong in signs value");
+        while(1){
+
+        }
+    }
+    assign_rightvalue_for_completed_mappingrelated_subrequest(sub);
+    ssd->program_count ++;
+
+}
+
 
 #ifdef DEBUGSUSPEND
                         printf("begin delete shown above sub_write now\n");
 #endif
-
+//since the sub and pre is in changing, so, maybe, this delete_w_sub_request  function will never used??
                         delete_w_sub_request(ssd, sub->location->channel, sub);
                         ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].num_w_cycle = 0;
 
@@ -1913,9 +2184,151 @@ continue;
 return 1;
 }//end of services_2_gc_busy_in_chip. 
 
+//lxc for compression
+
+void assign_rightvalue_for_completed_mappingrelated_subrequest(struct sub_request* sub)
+{
+    if( (sub->wait_evict_sign == 1)&& (sub->wait_fetch_mappingtable_sign == 1) ){
+        sub->wait_evict_sign_finished = 1;
+    }
+    if( (sub->wait_evict_sign == 0)&& (sub->wait_fetch_mappingtable_sign == 1) ){
+        sub->wait_fetch_mappingtable_sign_finished = 1;
+    }
+
+}//end of assign_rightvalue_for_completed_mappingrelated_subrequest, both read and write
+
+//lxc for compression
+
+void write_test_deletion_for_subrequest(struct ssd_info *ssd)
+{
+    unsigned int i = 0;
+    struct sub_request *sub = NULL, *p = NULL;
+    //lxcprogram_gc
+    int temp_chip_number = 0 ; 
+    int tempchannel_read_length = 0;
+
+    struct gc_operation *gc_node = NULL;
+    unsigned int chip ;
 
 
 
+
+
+    //for complete.
+    for (i = 0; i <
+            ssd->parameter->channel_number; i++)                                       /*这个循环处理不需要channel的时间(读命令已经到达chip，chip由ready变为busy)，当读请求完成时，将其从channel的队列中取出*/
+    {
+        sub = ssd->channel_head[i].subs_w_head;
+        p = sub;
+        while (sub != NULL) {
+
+            //printf("lxc,now is wrong read here.channel is %d, \n", i);
+
+            if(sub->location == NULL){
+                printf("subs_r_head location is wrong,now is wrong read here.channel is %d, \n", i);
+                while(1){
+
+                }
+            }
+
+            //       printf("wrong sub is %lld \n", sub);
+            if(i != sub->location->channel){
+                printf("here what kind of wrong???\n");
+                while(1){
+
+                }
+            }
+            chip = sub->location->chip;
+
+            if ((sub->current_state == SR_COMPLETE) ||
+                    ((sub->next_state == SR_COMPLETE) && (sub->next_state_predict_time <= ssd->current_time))) {
+
+                ssdsim_msg("wrong in deletion for subrequest now for read");
+                while(1){
+
+                }
+            }else {// end of complete or c_a_cmd  state
+                //here just move ahead,since no any delete happening.
+            
+                    sub = sub->next_node;
+                }
+
+        }// end of one channel complement judgement.
+    }//end of for channel loop for complete judgement
+
+
+    return SUCCESS;
+
+
+}
+
+
+
+
+
+//lxc for compression
+void read_test_deletion_for_subrequest(struct ssd_info *ssd)
+{
+    unsigned int i = 0;
+    struct sub_request *sub = NULL, *p = NULL;
+    //lxcprogram_gc
+    int temp_chip_number = 0 ; 
+    int tempchannel_read_length = 0;
+
+    struct gc_operation *gc_node = NULL;
+    unsigned int chip ;
+
+
+
+
+
+    //for complete.
+    for (i = 0; i <
+            ssd->parameter->channel_number; i++)                                       /*这个循环处理不需要channel的时间(读命令已经到达chip，chip由ready变为busy)，当读请求完成时，将其从channel的队列中取出*/
+    {
+        sub = ssd->channel_head[i].subs_r_head;
+        p = sub;
+        while (sub != NULL) {
+
+            //printf("lxc,now is wrong read here.channel is %d, \n", i);
+
+            if(sub->location == NULL){
+                printf("subs_r_head location is wrong,now is wrong read here.channel is %d, \n", i);
+                while(1){
+
+                }
+            }
+
+            //       printf("wrong sub is %lld \n", sub);
+            if(i != sub->location->channel){
+                printf("here what kind of wrong???\n");
+                while(1){
+
+                }
+            }
+            chip = sub->location->chip;
+
+            if ((sub->current_state == SR_COMPLETE) ||
+                    ((sub->next_state == SR_COMPLETE) && (sub->next_state_predict_time <= ssd->current_time))) {
+
+                ssdsim_msg("wrong in deletion for subrequest now for read");
+                while(1){
+
+                }
+            }else {// end of complete or c_a_cmd  state
+                //here just move ahead,since no any delete happening.
+            
+                    sub = sub->next_node;
+                }
+
+        }// end of one channel complement judgement.
+    }//end of for channel loop for complete judgement
+
+
+    return SUCCESS;
+
+
+}
 
 
 /*********************************************************************************************
@@ -1933,7 +2346,7 @@ int  services_2_r_cmd_trans_and_complete(struct ssd_info *ssd) {
     struct gc_operation *gc_node = NULL;
     unsigned int chip ;
 #ifdef DEBUGSUSPEND
-                    printf("go into services_2_r_cmd_trans_and_complete\n");
+    printf("go into services_2_r_cmd_trans_and_complete\n");
 #endif
 
 
@@ -1943,13 +2356,16 @@ int  services_2_r_cmd_trans_and_complete(struct ssd_info *ssd) {
         sub = ssd->channel_head[i].subs_r_head;
 
         while (sub != NULL) {
-            
+
             //printf("lxc,now is wrong read here.channel is %d, \n", i);
             if(sub->location == NULL){
                 printf("lxc,now is wrong read here.channel is %d, \n", i);
+                while(1){
+
+                }
             }
 
-     //       printf("wrong sub is %lld \n", sub);
+            //       printf("wrong sub is %lld \n", sub);
             if(i != sub->location->channel){
                 printf("here what kind of wrong???\n");
             }
@@ -1963,11 +2379,11 @@ int  services_2_r_cmd_trans_and_complete(struct ssd_info *ssd) {
             if (sub->current_state ==
                     SR_R_C_A_TRANSFER)                                  /*读命令发送完毕，将对应的die置为busy，同时修改sub的状态; 这个部分专门处理读请求由当前状态为传命令变为die开始busy，die开始busy不需要channel为空，所以单独列出*/
             {
-#ifdef DEBUGSUSPEND
-                printf("sub current_state is SR_R_C_A_TRANSFER,sub is %d\n",sub);
-#endif
+                traceRead_msg("sub current_state is SR_R_C_A_TRANSFER,sub is %lld\n",sub);
 
                 if (sub->next_state_predict_time <= ssd->current_time) {
+
+                    traceRead_msg("in read_cmd_and_complete function,begin to service,and go one step sub %lld ->begin_time is %lld,sub->current_time is %lld,  ssd->current_time is %lld ", sub, sub->begin_time, sub->current_time, ssd->current_time);
                     go_one_step(ssd, sub, NULL, SR_R_READ, NORMAL);                      /*状态跳变处理函数*/
 
                 }
@@ -1977,45 +2393,60 @@ int  services_2_r_cmd_trans_and_complete(struct ssd_info *ssd) {
 
     }//end of for channel loop.
 
-        //for complete.
-     for (i = 0; i <
+    //for complete.
+    for (i = 0; i <
             ssd->parameter->channel_number; i++)                                       /*这个循环处理不需要channel的时间(读命令已经到达chip，chip由ready变为busy)，当读请求完成时，将其从channel的队列中取出*/
     {
+
         sub = ssd->channel_head[i].subs_r_head;
         p = sub;
         while (sub != NULL) {
-            
+
             //printf("lxc,now is wrong read here.channel is %d, \n", i);
+
             if(sub->location == NULL){
-                printf("lxc,now is wrong read here.channel is %d, \n", i);
+                printf("subs_r_head location is wrong,now is wrong read here.channel is %d, \n", i);
+                while(1){
+
+                }
             }
 
-     //       printf("wrong sub is %lld \n", sub);
+            //       printf("wrong sub is %lld \n", sub);
             if(i != sub->location->channel){
                 printf("here what kind of wrong???\n");
+                while(1){
+
+                }
             }
             chip = sub->location->chip;
-           
-         if ((sub->current_state == SR_COMPLETE) ||
+
+            if ((sub->current_state == SR_COMPLETE) ||
                     ((sub->next_state == SR_COMPLETE) && (sub->next_state_predict_time <= ssd->current_time))) {
 
 
-//lxcprogram_for_adjust_write_suspension_number
+                //lxcprogram_for_adjust_write_suspension_number
 
-// if the chip has chip_read_stop sign value and the same chip just finished one read sub_request, then should give the priority to write sub_request in the same chip, only when gc is not happening. since if gc is happening,there is no right for corresponding channel's write sub_request. 
-//               unsigned int temp_num_write = 0; 
-//                    temp_num_write = statistic_write_request_number(ssd);
-//                    if(temp_num_write > 0){
-//                        if(ssd->channel_head[sub->location->channel].gc_command == NULL ){
-//                            ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_real_stop = 1;
-//                        }
-//                    }
-//
-//
-//
+                // if the chip has chip_read_stop sign value and the same chip just finished one read sub_request, then should give the priority to write sub_request in the same chip, only when gc is not happening. since if gc is happening,there is no right for corresponding channel's write sub_request. 
+                //               unsigned int temp_num_write = 0; 
+                //                    temp_num_write = statistic_write_request_number(ssd);
+                //                    if(temp_num_write > 0){
+                //                        if(ssd->channel_head[sub->location->channel].gc_command == NULL ){
+                //                            ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_real_stop = 1;
+                //                        }
+                //                    }
+                //
+                //
+                //
 
+                //lxc for compression
+                //add the sign of completion, but here must only value the fetching subrequests no evict subrequests.
 
-//lxcprogram_for_adjust_write_suspension_number
+                ssdsim_msg("in services_2_r_cmd_trans_and_complete, we will assign sub %lld, completed mapping things", sub);
+
+                if( (sub->wait_evict_sign == 0)&& (sub->wait_fetch_mappingtable_sign == 1) ){
+                    assign_rightvalue_for_completed_mappingrelated_subrequest(sub);
+                }
+                //lxcprogram_for_adjust_write_suspension_number
 
 
 
@@ -2025,103 +2456,120 @@ int  services_2_r_cmd_trans_and_complete(struct ssd_info *ssd) {
                 printf("now go into read complete function.sub->current_satate is (%d)=SR_COMPLETE or sub->next_state is (%d)=COMPLETE,\n",sub->current_state, sub->next_state);
 #endif
                 //lxcprogram_de-prioritize
-//                if(ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length > 0){
-//
+                //                if(ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length > 0){
+                //
                 //1. reduce length in this chip
-                    ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length --;
-//#ifdef DEBUGSUSPEND
-//                    printf("channel [%d], chip [%d], chip_read_queue_length minus one now is %d\n", sub->location->channel, sub->location->chip, ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length);
-//#endif
-//
-//                }
-//2. calculate all length in channel i
-//                    printf("now channel %d, chip is %d,  head address %lld, tail address %lld, moved sub is %lld\n", i, sub->location->chip, ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_tail, sub);
-                    for(temp_chip_number = 0, tempchannel_read_length = 0; temp_chip_number < (ssd->parameter->chip_num / ssd->parameter->channel_number); temp_chip_number ++){
-                        printf("channel %d, chip %d, read_length is %d\n", i, temp_chip_number, ssd->channel_head[i].chip_head[temp_chip_number].chip_read_queue_length);
-                        tempchannel_read_length += ssd->channel_head[i].chip_head[temp_chip_number].chip_read_queue_length;
-                    } 
+                //#ifdef DEBUGSUSPEND
+                //                    printf("channel [%d], chip [%d], chip_read_queue_length minus one now is %d\n", sub->location->channel, sub->location->chip, ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length);
+                //#endif
+                //
+                //                }
+                //2. calculate all length in channel i
+                //                    printf("now channel %d, chip is %d,  head address %lld, tail address %lld, moved sub is %lld\n", i, sub->location->chip, ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_tail, sub);
+                for(temp_chip_number = 0, tempchannel_read_length = 0; temp_chip_number < (ssd->parameter->chip_num / ssd->parameter->channel_number); temp_chip_number ++){
+                    traceError_msg("channel %d, chip %d, read_length is %d", i, temp_chip_number, ssd->channel_head[i].chip_head[temp_chip_number].chip_read_queue_length);
+                    tempchannel_read_length += ssd->channel_head[i].chip_head[temp_chip_number].chip_read_queue_length;
+                } 
+
+
+//lxc for compression. now, after statistic,  then we delete the value.if first delete sub, then next sub->location->xxx is not existing
+                ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_read_queue_length --;
+
+
 
                 if (sub !=
                         ssd->channel_head[i].subs_r_head)                             /*if the request is completed, we delete it from read queue */
                 {
                     printf("not head\n");
-                  //  p->next_node = sub->next_node;
+                    //  p->next_node = sub->next_node;
                     //lxcprogram_gc so important!!! original wrong!!!
                     if(sub == ssd->channel_head[i].subs_r_tail){
 
-                        p->next_node = sub->next_node;
+                        //p->next_node = sub->next_node;
+                        p->next_node = NULL;
                         ssd->channel_head[i].subs_r_tail = p;
                         //ssd->channel_head[i].subs_r_tail->next_node = NULL;
                         break;
                     }else {
                         p->next_node = sub->next_node;
-                   //     p = sub; // now p should stay here!!!
+                        //     p = sub; // now p should stay here!!!
                         sub = sub->next_node;
-                    }
-                    if(ssd->channel_head[i].subs_r_head->location == 0){   
-
-                        printf("lxclxclxc2_deletereadwrongin channelhead\n");
                     }
                     //printf("now channel %d, length is %d,  head address %lld, tail address %lld, moved sub is %lld\n", i, tempchannel_read_length, ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_tail, sub);
-                   // ssd->channel_head[i].chip_head[chip].chip_read_queue_length --;
-                } else {
+                    // ssd->channel_head[i].chip_head[chip].chip_read_queue_length --;
+                } else {// this else, begin to delete from channel head 
 
-                    if(tempchannel_read_length != 0){
-                        ssd->channel_head[i].subs_r_head = ssd->channel_head[i].subs_r_head->next_node;
-                        sub = sub->next_node;
-                        p = sub;
-                       // ssd->channel_head[i].chip_head[chip].chip_read_queue_length --;
-                    } else {
-                       // printf("here tail = NULL");
+
+                    //if(tempchannel_read_length == 0){
+                    if(( ssd->channel_head[i].subs_r_tail == NULL) || (ssd->channel_head[i].subs_r_head == NULL)){
+                        ssdsim_msg("1wrong in deleting read completed");
+                        while(1){
+
+                        }
+
+                    }
+
+                    if( ssd->channel_head[i].subs_r_tail == ssd->channel_head[i].subs_r_head ){
+                    //if(tempchannel_read_length == 1){
                         ssd->channel_head[i].subs_r_head = NULL;
                         ssd->channel_head[i].subs_r_tail = NULL;
                         break;
-                        //   ssd->channel_head[i].chip_head[chip].chip_read_queue_length --;
+
+                    } else {
+                        // printf("here tail = NULL");
+                        ssd->channel_head[i].subs_r_head = ssd->channel_head[i].subs_r_head->next_node;
+                        sub = sub->next_node;
+                        p = sub;
+                        if(sub != ssd->channel_head[i].subs_r_head){
+                            ssdsim_msg("3_deletereadwrongin channelhead");
+                            while(1){
+
+                            }
+
+                        }
                     }
 
                     //printf("now channel %d, length is %d,  head address %lld, tail address %lld, \n", i, tempchannel_read_length, ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_tail);
-                    if(ssd->channel_head[i].subs_r_head->location == 0){   
 
-                        printf("lxclxclxc1_deletereadwrongin channelhead\n");
-                    }
-
+                }//end of deletion from channel subhead.
+                //                    printf("after moved now channel %d, length is %d,  head address %lld,0x %x,  tail address %lld, 0x%x \n", i, tempchannel_read_length, ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_tail,ssd->channel_head[i].subs_r_tail );
+                //lxc for compression.  this step is to check above deletion process legality.
+                if((tempchannel_read_length != 0) &&(( ssd->channel_head[i].subs_r_tail == NULL) || ( ssd->channel_head[i].subs_r_head == NULL))){
+                    printf("stop here, since list deleting in read sub completion is wrong.\n");
+                    while(1)
+                    {}
+                }
+                //printf_every_chip_read_subrequest(ssd);
+            }else {// end of complete or c_a_cmd  state
+                //here just move ahead,since no any delete happening.
+                if(ssd->channel_head[i].subs_r_tail == ssd->channel_head[i].subs_r_head){
+                    break;
+                }else{
+                    p = sub;
+                    sub = sub->next_node;
                 }
 
-//                    printf("after moved now channel %d, length is %d,  head address %lld,0x %x,  tail address %lld, 0x%x \n", i, tempchannel_read_length, ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_head,ssd->channel_head[i].subs_r_tail,ssd->channel_head[i].subs_r_tail );
-                   if((tempchannel_read_length != 0) && ( ssd->channel_head[i].subs_r_head == 0)){
-                   printf("stop here\n");
-                   }
-                    //printf_every_chip_read_subrequest(ssd);
-            }else {// end of complete or c_a_cmd  state
-            p = sub;
-            sub = sub->next_node;
-
-            
-            }
-         if(ssd->channel_head[i].subs_r_head->location == 0){   
-
-             printf("lxclxclxc_deletereadwrongin channelhead\n");
-         }
-        }// end of complement judgement.
-    }//end of for channel loop.
+            }//end of no complete.
+        }// end of one channel complement judgement.
+    }//end of for channel loop for complete judgement
 
 
-        //judge for gc restore after every one read finished. //gc is channel gc
-        //lxcprogram_gc 
-//    for (i = 0; i <
-//            ssd->parameter->channel_number; i++) { 
-//        gc_node = ssd->channel_head[i].gc_command;
-//        if(gc_node != NULL){
-//
-//            chip = gc_node->chip;
-//        }
-//
-//        if((gc_node != NULL) && (gc_node->sign_for_preemptive == 1) ){
-//            try_to_restore_gc_function(ssd, gc_node, i, chip);
-//        }
-//
-//    }
-//
+    //judge for gc restore after every one read finished. //gc is channel gc
+    //lxcprogram_gc 
+    //    for (i = 0; i <
+    //            ssd->parameter->channel_number; i++) { 
+    //        gc_node = ssd->channel_head[i].gc_command;
+    //        if(gc_node != NULL){
+    //
+    //            chip = gc_node->chip;
+    //        }
+    //
+    //        if((gc_node != NULL) && (gc_node->sign_for_preemptive == 1) ){
+    //            try_to_restore_gc_function(ssd, gc_node, i, chip);
+    //        }
+    //
+    //    }
+    //
 
     //judge for suspended write after every one read finished. because this function contains channel loop and chip loop independently.  
     //try_to_restore_write_function(ssd);
@@ -2392,8 +2840,10 @@ int services_2_r_wait(struct ssd_info *ssd, unsigned int channel, unsigned int *
 #ifdef DEBUGSUSPEND
             printf("begin enter services_2_r_wait NO advance commands,here is sub information, but, some of them are not useful, sub current_state %d, sub current_time %lld, sub next_state %d,sub next predict time %lld, sub begin_time %lld, sub channel %d, sub chip %d, sub die %d, sub plane %d, sub block %d, sub page %d, sub->lpn %d\n",sub->current_state, sub->current_time, sub->next_state, sub->next_state_predict_time, sub->begin_time, sub->location->channel, sub->location->chip, sub->location->die, sub->location->plane, sub->location->block, sub->location->page, sub->lpn);
 #endif
+//lxc for compression
+traceRead_msg("in read_wait function,begin to service sub %lld ->begin_time is %lld, ssd->current_time is %lld ", sub, sub->begin_time, ssd->current_time);
 
-            if (sub->current_state == SR_WAIT) {
+            if ( (sub->current_state == SR_WAIT) &&(sub->begin_time <= ssd->current_time)) {
 
                 if ((ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].current_state ==
                      CHIP_IDLE) ||
@@ -2422,37 +2872,37 @@ int services_2_r_wait(struct ssd_info *ssd, unsigned int channel, unsigned int *
 
 
 // FCFS:    jump out if read is later than write sub in this destination chip.
-                       while(temp_for_writesub != NULL ){
-                           if (temp_for_writesub->location->chip == sub->location->chip){
-
-                               break;
-                           }else{
-                               temp_for_writesub = temp_for_writesub->next_node;
-                           }
-                       }
-                       printf("temp_for_writesub %lld\n", temp_for_writesub);
-                       if (temp_for_writesub != NULL){
-                           if(temp_for_writesub->begin_time < sub->begin_time){
-
-                               printf("read should give up to write, time is %lld, write time is %lld \n", temp_for_writesub->begin_time, sub->begin_time );
-
-                               ssd->diff_between_FCFS_RF++;
-                               if(sub->location->chip != temp_for_writesub->location->chip){
-                               printf("FCFS seriously wrong\n");
-                               }
-                               break;
-                           }
-                       }
-
-
-
+//                       while(temp_for_writesub != NULL ){
+//                           if (temp_for_writesub->location->chip == sub->location->chip){
+//
+//                               break;
+//                           }else{
+//                               temp_for_writesub = temp_for_writesub->next_node;
+//                           }
+//                       }
+//                       printf("temp_for_writesub %lld\n", temp_for_writesub);
+//                       if (temp_for_writesub != NULL){
+//                           if(temp_for_writesub->begin_time < sub->begin_time){
+//
+//                               printf("read should give up to write, time is %lld, write time is %lld \n", temp_for_writesub->begin_time, sub->begin_time );
+//
+//                               ssd->diff_between_FCFS_RF++;
+//                               if(sub->location->chip != temp_for_writesub->location->chip){
+//                               printf("FCFS seriously wrong\n");
+//                               }
+//                               break;
+//                           }
+//                       }
+//
+//
+//
 // FCFS:    jump out if read is later than write sub in this destination chip.
 
 
-
-
+traceRead_msg("now already can service sub %lld ->begin_time is %lld, ssd->current_time is %lld ", sub, sub->begin_time, ssd->current_time);
 
                             go_one_step(ssd, sub, NULL, SR_R_C_A_TRANSFER, NORMAL);
+                            ssdsim_msg("go out from go_one_step with sr_r_c_a_transfer");
 
                             *change_current_time_flag = 0;
                         *channel_busy_flag = 1;                                              /*已经占用了这个周期的总线，不用执行die中数据的回传*/
@@ -2493,7 +2943,15 @@ return 0;
 
 }
 
+//lxc for compression
+//it is not easy to delete the single direction list!!!
+struct sub_request* get_the_previous_sub(struct ssd_info* ssd, unsigned int channel, struct sub_request * sub)
+{
+struct sub_request* pre_sub = NULL;
 
+
+
+}
 
 /*********************************************************************
 *当一个写子请求处理完后，要从请求队列上删除，这个函数就是执行这个功能。
@@ -2504,7 +2962,7 @@ int delete_w_sub_request(struct ssd_info *ssd, unsigned int channel, struct sub_
 
 
     //lxcprogram_gc
-ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_write_queue_length --;
+    ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_write_queue_length --;
 #ifdef DEBUGSUSPEND
     printf("channel [%d], chip [%d],die [%d], block[%d], page[%d], write queue length minus one %d\n",sub->location->channel, sub->location->chip, sub->location->die,  sub->location->block,  sub->location->page, ssd->channel_head[sub->location->channel].chip_head[sub->location->chip].chip_write_queue_length);
 #endif
@@ -3285,6 +3743,7 @@ struct ssd_info *process(struct ssd_info *ssd) {
         }
 
 
+    traceError_msg("enter process,  current time:%lld\n",ssd->current_time);
 
 #ifdef DEBUG_CURR_TIME
     printf("enter process,  current time:%lld\n",ssd->current_time);
@@ -3325,8 +3784,8 @@ struct ssd_info *process(struct ssd_info *ssd) {
     printf_every_chip_read_subrequest(ssd);
 #endif
 
-    services_2_r_cmd_trans_and_complete(
-            ssd);                                            /*处理当前状态是SR_R_C_A_TRANSFER或者当前状态是SR_COMPLETE，或者下一状态是SR_COMPLETE并且下一状态预计时间小于当前状态时间*/
+    services_2_r_cmd_trans_and_complete(ssd);                                            /*处理当前状态是SR_R_C_A_TRANSFER或者当前状态是SR_COMPLETE，或者下一状态是SR_COMPLETE并且下一状态预计时间小于当前状态时间*/
+    read_test_deletion_for_subrequest(ssd);
 #ifdef DEBUG 
     printf("finish services_2_r_cmd_trans_and_complete\n");
     printfsub_request_status(ssd);
@@ -3342,7 +3801,7 @@ struct ssd_info *process(struct ssd_info *ssd) {
 #endif
 
     services_2_write_busy_in_chip(ssd);
-
+    write_test_deletion_for_subrequest(ssd);
 #ifdef DEBUG 
     printf("finish services_2_write_busy_in_chip\n");
     printfsub_request_status(ssd);
@@ -5240,8 +5699,16 @@ Status go_one_step(struct ssd_info *ssd, struct sub_request *sub1, struct sub_re
                 sub->next_state = SR_R_READ;
                 sub->next_state_predict_time = ssd->current_time + 7 * ssd->parameter->time_characteristics.tWC;
                 sub->begin_time = ssd->current_time;
+//lxc for compression
+                
+                //ssd->channel_head[location->channel].chip_head[location->chip].die_head[location->die].plane_head[location->plane].add_reg_ppn = sub->ppn;
+                if(sub->wait_fetch_mappingtable_sign == 1){
+
+                ssd->channel_head[location->channel].chip_head[location->chip].die_head[location->die].plane_head[location->plane].add_reg_ppn = -2 ;
+                }else{
 
                 ssd->channel_head[location->channel].chip_head[location->chip].die_head[location->die].plane_head[location->plane].add_reg_ppn = sub->ppn;
+                }
                 ssd->read_count++;
 
                 ssd->channel_head[location->channel].current_state = CHANNEL_C_A_TRANSFER;
@@ -5343,10 +5810,10 @@ Status go_one_step(struct ssd_info *ssd, struct sub_request *sub1, struct sub_re
 #ifdef DEBUG
                                 printf("enter normal command's SR_W_C_A_DATA_TRANSFER,and ssd->current_time is %llu \n",ssd->current_time);
 #endif
+//lxc for compression
 
-
- if (ssd->dram->map->map_entry[sub->lpn].state !=
-        0)                                    /*说明这个逻辑页之前有写过，需要使用先读出来，再写下去，否则直接写下去即可*/
+ if ( (ssd->dram->map->map_entry[sub->lpn].state !=
+        0) && (sub->wait_fetch_mappingtable_sign == 0))                                   /*说明这个逻辑页之前有写过，需要使用先读出来，再写下去，否则直接写下去即可*/
     {
         if ((sub->state & ssd->dram->map->map_entry[sub->lpn].state) ==
             ssd->dram->map->map_entry[sub->lpn].state)   /*可以覆盖*/

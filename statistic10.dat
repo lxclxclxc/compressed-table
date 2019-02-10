@@ -1,8 +1,8 @@
 parameter file: page.parameters
-trace file: example_systor_90000.ascii
+trace file: backupexample.ascii
 -----------------------parameter file----------------------
 #parameter file
-dram capacity = 33554432;     #the unit is B now is 32MB
+dram capacity = 1048576  #33554432--32MB, now is 1MB;     #the unit is B now is 32MB. buffer hit states: hit, hit missing, and enough space accomodating request.
 chip number[0] = 4;
 chip number[1] = 4;
 chip number[2] = 4;
@@ -26,7 +26,7 @@ channel number = 6;   #the number of channel 2
 chip number = 24;       # 4
 die number = 2;      
 plane number = 2;     # 2
-block number = 4096;  # 2048
+block number = 2048;  # 2048
 page number = 128;    # 64
 subpage page = 4;
 page capacity = 2048;
@@ -197,11 +197,11 @@ the 5 channel, 3 chip, 1 die, 1 plane has :             0 erase operations
 
 
 ---------------------------statistic data---------------------------
-min lsn:             0
-max lsn:   -1104790350
-read count:        414969
-program count:        939769                        include the flash write count leaded by read requests
-the read operation leaded by un-covered update count:          3774
+min lsn:           132
+max lsn:       1002411
+read count:         13955
+program count:         23745                        include the flash write count leaded by read requests
+the read operation leaded by un-covered update count:           162
 erase count:             0
 direct erase count:             0
 copy back count:             0
@@ -212,19 +212,19 @@ interleave read count:             0
 interleave two plane and one program count:             0
 interleave two plane count:             0
 gc copy back count:             0
-write flash count:        864871
+write flash count:         17118
 waste page count:             0
 interleave erase count:             0
 multiple plane erase count:             0
 interleave multiple plane erase count:             0
-read request count:         58697
-write request count:         31298
-read request average size:     45.542938
-write request average size:     34.870510
-read request average response time: 168136
-write request average response time: 921260
-buffer read hits:         21331
-buffer read miss:          4040
-buffer write hits:        154308
-buffer write miss:        548279
+read request count:          4077
+write request count:          5922
+read request average size:     12.187196
+write request average size:      9.841716
+read request average response time: 80080
+write request average response time: 112930
+buffer read hits:          1760
+buffer read miss:           327
+buffer write hits:         19095
+buffer write miss:         26747
 erase:             0

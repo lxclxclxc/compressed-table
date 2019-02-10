@@ -1,5 +1,5 @@
 #parameter file
-dram capacity = 33554432;     #the unit is B now is 32MB
+dram capacity = 1048576  #33554432--32MB, now is 1MB;     #the unit is B now is 32MB. buffer hit states: hit, hit missing, and enough space accomodating request.
 chip number[0] = 4;
 chip number[1] = 4;
 chip number[2] = 4;
@@ -23,7 +23,7 @@ channel number = 6;   #the number of channel 2
 chip number = 24;       # 4
 die number = 2;      
 plane number = 2;     # 2
-block number = 4096;  # 2048
+block number = 2048;  # 2048
 page number = 128;    # 64
 subpage page = 4;
 page capacity = 2048;

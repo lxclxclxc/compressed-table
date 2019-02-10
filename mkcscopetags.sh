@@ -1,5 +1,7 @@
 #!bin/sh
-rm -rf  cscope.files cscope.files tags
+#rm -rf  cscope.files cscope.files tags
+rm -rf  cscope.*  tags
+rm -rf  tags
 
 
 

@@ -1,0 +1,175 @@
+./initialize.c:    dram->buffer->max_buffer_sector = ssd->parameter->dram_capacity / SECTOR; //512
+./ssd.c:        if (buffer->buffer_head != buffer_node) {
+./ssd.c:            if (buffer->buffer_tail == buffer_node) {
+./ssd.c:                buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:            } else if (buffer_node != buffer->buffer_head) {
+./ssd.c:            buffer_node->LRU_link_next = buffer->buffer_head;
+./ssd.c:            buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:            buffer->buffer_head = buffer_node;
+./ssd.c:        if (buffer->buffer_head != buffer_node) {
+./ssd.c:            if (buffer->buffer_tail == buffer_node) {
+./ssd.c:                buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:            } else if (buffer_node != buffer->buffer_head) {
+./ssd.c:            buffer_node->LRU_link_next = buffer->buffer_head;
+./ssd.c:            buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:            buffer->buffer_head = buffer_node;
+./ssd.c:    buffer->write_hit++;
+./ssd.c:        if (buffer->buffer_head != buffer_node) {
+./ssd.c:            if (buffer->buffer_tail == buffer_node) {
+./ssd.c:                buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:            } else if (buffer_node != buffer->buffer_head) {
+./ssd.c:            buffer_node->LRU_link_next = buffer->buffer_head;
+./ssd.c:            buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:            buffer->buffer_head = buffer_node;
+./ssd.c:        if (buffer->buffer_head != buffer_node) {
+./ssd.c:            if (buffer->buffer_tail == buffer_node) {
+./ssd.c:                buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:            } else if (buffer_node != buffer->buffer_head) {
+./ssd.c:            buffer_node->LRU_link_next = buffer->buffer_head;
+./ssd.c:            buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:            buffer->buffer_head = buffer_node;
+./ssd.c:    buffer->read_hit++;
+./ssd.c:        ssd->dram->buffer->buffer_sector_count -= 1 ;// once only one total translation page here.
+./ssd.c:        free_sector = ssd->dram->buffer->max_buffer_sector - ssd->dram->buffer->buffer_sector_count;
+./ssd.c:                ssd->dram->buffer->write_miss_hit = ssd->dram->buffer->write_miss_hit + write_back_count;
+./ssd.c:                sub_req_state = ssd->dram->buffer->buffer_tail->stored;
+./ssd.c:                sub_req_size = size(ssd->dram->buffer->buffer_tail->stored);
+./ssd.c:                sub_req_lpn = ssd->dram->buffer->buffer_tail->group;
+./ssd.c:				append_on_request_missing_in_data_buffer_lpn_data(req,ssd->dram->buffer->buffer_tail->group, ssd->dram->buffer->buffer_tail->stored);
+./ssd.c:                //ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req->size;
+./ssd.c:                ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req_size;
+./ssd.c:                pt = ssd->dram->buffer->buffer_tail;
+./ssd.c:                if (ssd->dram->buffer->buffer_head->LRU_link_next == NULL) {
+./ssd.c:                    ssd->dram->buffer->buffer_head = NULL;
+./ssd.c:                    ssd->dram->buffer->buffer_tail = NULL;
+./ssd.c:                    ssd->dram->buffer->buffer_tail = ssd->dram->buffer->buffer_tail->LRU_link_pre;
+./ssd.c:                    ssd->dram->buffer->buffer_tail->LRU_link_next = NULL;
+./ssd.c:    printf("here make a buffer-node and insert into buffer tree. should printf here\n");
+./ssd.c:        new_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./ssd.c:        if (ssd->dram->buffer->buffer_head != NULL) {
+./ssd.c:            ssd->dram->buffer->buffer_head->LRU_link_pre = new_node;
+./ssd.c:            ssd->dram->buffer->buffer_tail = new_node;
+./ssd.c:        ssd->dram->buffer->buffer_head = new_node;
+./ssd.c:        ssd->dram->buffer->buffer_sector_count += sector_count;
+./ssd.c:                        if (ssd->dram->buffer->buffer_head != buffer_node) {
+./ssd.c:                            if (ssd->dram->buffer->buffer_tail == buffer_node) {
+./ssd.c:                                ssd->dram->buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:                            } else if (buffer_node != ssd->dram->buffer->buffer_head) {
+./ssd.c:                            buffer_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./ssd.c:                            ssd->dram->buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:                            ssd->dram->buffer->buffer_head = buffer_node;
+./ssd.c:                        ssd->dram->buffer->write_hit++;
+./ssd.c:                    ssd->dram->buffer->write_miss_hit++;
+./ssd.c:                    if (ssd->dram->buffer->buffer_sector_count >= ssd->dram->buffer->max_buffer_sector) {
+./ssd.c:                            ssd->dram->buffer->buffer_tail)                  /*如果命中的节点是buffer中最后一个节点，交换最后两个节点*/
+./ssd.c:                            pt = ssd->dram->buffer->buffer_tail->LRU_link_pre;
+./ssd.c:                            ssd->dram->buffer->buffer_tail->LRU_link_pre = pt->LRU_link_pre;
+./ssd.c:                            ssd->dram->buffer->buffer_tail->LRU_link_pre->LRU_link_next = ssd->dram->buffer->buffer_tail;
+./ssd.c:                            ssd->dram->buffer->buffer_tail->LRU_link_next = pt;
+./ssd.c:                            pt->LRU_link_pre = ssd->dram->buffer->buffer_tail;
+./ssd.c:                            ssd->dram->buffer->buffer_tail = pt;
+./ssd.c:                        sub_req_state = ssd->dram->buffer->buffer_tail->stored;
+./ssd.c:                        sub_req_size = size(ssd->dram->buffer->buffer_tail->stored);
+./ssd.c:                        sub_req_lpn = ssd->dram->buffer->buffer_tail->group;
+./ssd.c:                //        ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req->size;
+./ssd.c:                        ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req_size;
+./ssd.c:                        pt = ssd->dram->buffer->buffer_tail;
+./ssd.c:                        if (ssd->dram->buffer->buffer_head->LRU_link_next == NULL) {
+./ssd.c:                            ssd->dram->buffer->buffer_head = NULL;
+./ssd.c:                            ssd->dram->buffer->buffer_tail = NULL;
+./ssd.c:                            ssd->dram->buffer->buffer_tail = ssd->dram->buffer->buffer_tail->LRU_link_pre;
+./ssd.c:                            ssd->dram->buffer->buffer_tail->LRU_link_next = NULL;
+./ssd.c:                    if (ssd->dram->buffer->buffer_head !=
+./ssd.c:                        if (ssd->dram->buffer->buffer_tail == buffer_node) {
+./ssd.c:                            ssd->dram->buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:                        buffer_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./ssd.c:                        ssd->dram->buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:                        ssd->dram->buffer->buffer_head = buffer_node;
+./ssd.c:                    ssd->dram->buffer->buffer_sector_count++;
+./ssd.c:                    if (ssd->dram->buffer->buffer_head != buffer_node) {
+./ssd.c:                        if (ssd->dram->buffer->buffer_tail == buffer_node) {
+./ssd.c:                            ssd->dram->buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:                        buffer_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./ssd.c:                        ssd->dram->buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:                        ssd->dram->buffer->buffer_head = buffer_node;
+./ssd.c:                    ssd->dram->buffer->read_hit++;
+./ssd.c:                    ssd->dram->buffer->read_miss_hit++;
+./ssd.c:                    printf("buffer->read_miss_hit++ is %d\n",ssd->dram->buffer->read_miss_hit);
+./ssd.c:                    if (ssd->dram->buffer->buffer_head != buffer_node) {
+./ssd.c:                        if (ssd->dram->buffer->buffer_tail == buffer_node) {
+./ssd.c:                            ssd->dram->buffer->buffer_tail = buffer_node->LRU_link_pre;
+./ssd.c:                        buffer_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./ssd.c:                        ssd->dram->buffer->buffer_head->LRU_link_pre = buffer_node;
+./ssd.c:                        ssd->dram->buffer->buffer_head = buffer_node;
+./ssd.c:                    ssd->dram->buffer->read_hit++;
+./ssd.c:                    ssd->dram->buffer->read_miss_hit++;
+./ssd.c:                    printf("buffer->read_miss_hit++ is %d\n",ssd->dram->buffer->read_miss_hit);
+./ssd.c:    fprintf(ssd->outputfile, "buffer read hits: %13d\n", ssd->dram->buffer->read_hit);
+./ssd.c:    fprintf(ssd->outputfile, "buffer read miss: %13d\n", ssd->dram->buffer->read_miss_hit);
+./ssd.c:    fprintf(ssd->outputfile, "buffer write hits: %13d\n", ssd->dram->buffer->write_hit);
+./ssd.c:    fprintf(ssd->outputfile, "buffer write miss: %13d\n", ssd->dram->buffer->write_miss_hit);
+./ssd.c:    fprintf(ssd->statisticfile, "buffer read hits: %13d\n", ssd->dram->buffer->read_hit);
+./ssd.c:    fprintf(ssd->statisticfile, "buffer read miss: %13d\n", ssd->dram->buffer->read_miss_hit);
+./ssd.c:    fprintf(ssd->statisticfile, "buffer write hits: %13d\n", ssd->dram->buffer->write_hit);
+./ssd.c:    fprintf(ssd->statisticfile, "buffer write miss: %13d\n", ssd->dram->buffer->write_miss_hit);
+Binary file ./.ssd.c.swp matches
+./cscope.out:("here make� buffer-node�nd insert into buffer�ree. should�rintf here\n");
+./cscope.out: = ssd->dram->buffer->buffer_tail;
+./cscope.out:("here make� buffer-node�nd insert into buffer�ree. should�rintf here\n");
+./cscope.out: = ssd->dram->buffer->buffer_tail;
+./flash.c:    printf("enter insert2buffer, this is real lpn (one by one) from real ssd->request_tail, that means also the new request. current time:%lld, lpn:%d, state:%d, .so buffer->tail req's lsn is %d, size is %d, operation is %d\n",ssd->current_time,lpn,state, req->lsn, req->size, req->operation);
+./flash.c:        free_sector = ssd->dram->buffer->max_buffer_sector - ssd->dram->buffer->buffer_sector_count;
+./flash.c:            ssd->dram->buffer->write_miss_hit = ssd->dram->buffer->write_miss_hit + write_back_count;
+./flash.c:                sub_req_state = ssd->dram->buffer->buffer_tail->stored;
+./flash.c:                sub_req_size = size(ssd->dram->buffer->buffer_tail->stored);
+./flash.c:                sub_req_lpn = ssd->dram->buffer->buffer_tail->group;
+./flash.c:                //ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req->size;
+./flash.c:                ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req_size;
+./flash.c:                pt = ssd->dram->buffer->buffer_tail;
+./flash.c:                if (ssd->dram->buffer->buffer_head->LRU_link_next == NULL) {
+./flash.c:                    ssd->dram->buffer->buffer_head = NULL;
+./flash.c:                    ssd->dram->buffer->buffer_tail = NULL;
+./flash.c:                    ssd->dram->buffer->buffer_tail = ssd->dram->buffer->buffer_tail->LRU_link_pre;
+./flash.c:                    ssd->dram->buffer->buffer_tail->LRU_link_next = NULL;
+./flash.c:    printf("here make a buffer-node and insert into buffer tree. should printf here\n");
+./flash.c:        new_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./flash.c:        if (ssd->dram->buffer->buffer_head != NULL) {
+./flash.c:            ssd->dram->buffer->buffer_head->LRU_link_pre = new_node;
+./flash.c:            ssd->dram->buffer->buffer_tail = new_node;
+./flash.c:        ssd->dram->buffer->buffer_head = new_node;
+./flash.c:        ssd->dram->buffer->buffer_sector_count += sector_count;
+./flash.c:                        if (ssd->dram->buffer->buffer_head != buffer_node) {
+./flash.c:                            if (ssd->dram->buffer->buffer_tail == buffer_node) {
+./flash.c:                                ssd->dram->buffer->buffer_tail = buffer_node->LRU_link_pre;
+./flash.c:                            } else if (buffer_node != ssd->dram->buffer->buffer_head) {
+./flash.c:                            buffer_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./flash.c:                            ssd->dram->buffer->buffer_head->LRU_link_pre = buffer_node;
+./flash.c:                            ssd->dram->buffer->buffer_head = buffer_node;
+./flash.c:                        ssd->dram->buffer->write_hit++;
+./flash.c:                    ssd->dram->buffer->write_miss_hit++;
+./flash.c:                    if (ssd->dram->buffer->buffer_sector_count >= ssd->dram->buffer->max_buffer_sector) {
+./flash.c:                            ssd->dram->buffer->buffer_tail)                  /*如果命中的节点是buffer中最后一个节点，交换最后两个节点*/
+./flash.c:                            pt = ssd->dram->buffer->buffer_tail->LRU_link_pre;
+./flash.c:                            ssd->dram->buffer->buffer_tail->LRU_link_pre = pt->LRU_link_pre;
+./flash.c:                            ssd->dram->buffer->buffer_tail->LRU_link_pre->LRU_link_next = ssd->dram->buffer->buffer_tail;
+./flash.c:                            ssd->dram->buffer->buffer_tail->LRU_link_next = pt;
+./flash.c:                            pt->LRU_link_pre = ssd->dram->buffer->buffer_tail;
+./flash.c:                            ssd->dram->buffer->buffer_tail = pt;
+./flash.c:                        sub_req_state = ssd->dram->buffer->buffer_tail->stored;
+./flash.c:                        sub_req_size = size(ssd->dram->buffer->buffer_tail->stored);
+./flash.c:                        sub_req_lpn = ssd->dram->buffer->buffer_tail->group;
+./flash.c:                        ssd->dram->buffer->buffer_sector_count = ssd->dram->buffer->buffer_sector_count - sub_req->size;
+./flash.c:                        pt = ssd->dram->buffer->buffer_tail;
+./flash.c:                        if (ssd->dram->buffer->buffer_head->LRU_link_next == NULL) {
+./flash.c:                            ssd->dram->buffer->buffer_head = NULL;
+./flash.c:                            ssd->dram->buffer->buffer_tail = NULL;
+./flash.c:                            ssd->dram->buffer->buffer_tail = ssd->dram->buffer->buffer_tail->LRU_link_pre;
+./flash.c:                            ssd->dram->buffer->buffer_tail->LRU_link_next = NULL;
+./flash.c:                    if (ssd->dram->buffer->buffer_head !=
+./flash.c:                        if (ssd->dram->buffer->buffer_tail == buffer_node) {
+./flash.c:                            ssd->dram->buffer->buffer_tail = buffer_node->LRU_link_pre;
+./flash.c:                        buffer_node->LRU_link_next = ssd->dram->buffer->buffer_head;
+./flash.c:                        ssd->dram->buffer->buffer_head->LRU_link_pre = buffer_node;
+./flash.c:                        ssd->dram->buffer->buffer_head = buffer_node;
+./flash.c:                    ssd->dram->buffer->buffer_sector_count++;
+./flash.c:printf("enter creat_sub_request.!!!!!!!once one buffer->tail element.so the req and size is right req。not the ssd->request_tail's request!!!!!! operation is %d, req is %x(no 0 is no NULL),lpn is %d, size is %d, state is %d\n",operation, req, lpn, size, state);

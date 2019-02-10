@@ -28,7 +28,6 @@ Hao Luo         2011/01/01        2.0           Change               luohao13568
 #define ACTIVE_FIXED 0
 #define ACTIVE_ADJUST 1
 
-
 /************************************************************************
 * Compare function for AVL Tree                                        
 ************************************************************************/
@@ -44,6 +43,22 @@ extern int keyCompareFunc(TREE_NODE *p, TREE_NODE *p1) {
 
     return 0;
 }
+
+//lxc for compression
+extern int keyCompareFunc_for_DFTL(TREE_NODE *p, TREE_NODE *p1) {
+    struct buffer_group_for_DFTL *T1 = NULL, *T2 = NULL;
+
+    T1 = (struct buffer_group_for_DFTL *) p;
+    T2 = (struct buffer_group_for_DFTL *) p1;
+
+
+    if (T1->group < T2->group) return 1;
+    if (T1->group > T2->group) return -1;
+
+    return 0;
+}
+
+
 
 
 extern int freeFunc(TREE_NODE *pNode) {
@@ -92,6 +107,8 @@ struct ssd_info *initiation(struct ssd_info *ssd) {
 // add for erase iterations
     ssd->erase_iterations = 10;
     strncpy(ssd->parameterfilename, "page.parameters", 16);
+    strncpy(ssd->fp_number_subrequests_txt_name, "fp_number_subrequests.txt", 25);
+
     //strncpy(ssd->tracefilename,"example.ascii",25);
     printf("\ninput trace file name:");
     scanf("%s", ssd->tracefilename);
@@ -101,6 +118,11 @@ struct ssd_info *initiation(struct ssd_info *ssd) {
 
     //导入ssd的配置文件
     parameters = load_parameters(ssd->parameterfilename);
+//new compression
+
+    ssd->changing_size_during_the_runnig_size_in_byte_mostshouldbeadding = 0;
+
+
     ssd->parameter = parameters;
     ssd->min_lsn = 0x7fffffff;
     ssd->page = ssd->parameter->chip_num * ssd->parameter->die_chip * ssd->parameter->plane_die *
@@ -120,6 +142,13 @@ struct ssd_info *initiation(struct ssd_info *ssd) {
 
 
     printf("\n");
+    ssd->fp_number_subrequests_txt = fopen(ssd->fp_number_subrequests_txt_name, "w");
+    if (ssd->fp_number_subrequests_txt == NULL) {
+        printf("the ssd->fp_number_subrequests_txt file can't open\n");
+        while(1){
+
+        }
+    }
     ssd->outputfile = fopen(ssd->outputfilename, "w");
     if (ssd->outputfile == NULL) {
         printf("the output file can't open\n");
@@ -175,6 +204,156 @@ struct ssd_info *initiation(struct ssd_info *ssd) {
     return ssd;
 }
 
+//lxc for compression
+dftl_mapping_table_t* dftl_create_mapping_table (struct ssd_info *ssd)
+{
+    dftl_mapping_table_t* mt_temp = NULL;
+    unsigned long i = 0;
+    unsigned long page_num_temp = ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die *ssd->parameter->die_chip * ssd->parameter->chip_num;
+
+    int translation_page_num = page_num_temp / NUM_ENTRIES_PER_DIR; 
+    if(page_num_temp % NUM_ENTRIES_PER_DIR != 0){
+        translation_page_num  += 1;
+    }
+    mt_temp = (dftl_mapping_table_t*) malloc(sizeof(dftl_mapping_table_t));
+    memset(mt_temp, 0, sizeof(dftl_mapping_table_t));
+
+    mt_temp->buffer_DFTL = (tAVLTree *) avlTreeCreate((void *) keyCompareFunc, (void *) freeFunc);
+#ifdef COMPRESSION_MAPPING 
+    mt_temp->buffer_DFTL_UNCOM = (tAVLTree *) avlTreeCreate((void *) keyCompareFunc, (void *) freeFunc);
+
+#else
+
+    mt_temp->buffer_DFTL_UNCOM = NULL;
+#endif
+    //for the granularity of translation page in DFTL_buffer
+#ifdef TRANSLATION_PAGE_UNIT 
+
+    if(mt_temp->buffer_DFTL == NULL){
+        ssdsim_msg("wrong in malloc in avlTree for DFTL");
+        while(1){
+        }
+    }
+    //mt_temp->mapping_entry_size = sizeof(mapping_entry_t);
+    mt_temp->mapping_entry_size = MAPPING_ENTRY_SIZE;
+    mt_temp->nr_entries_per_dir_slot = NUM_ENTRIES_PER_DIR;
+    mt_temp->nr_total_dir_slots = page_num_temp / NUM_ENTRIES_PER_DIR; 
+#ifdef COMPRESSION_MAPPING 
+    if(mt_temp->buffer_DFTL_UNCOM == NULL){
+        ssdsim_msg("wrong in malloc in avlTree for uncompression_DFTL");
+        while(1){
+        }
+    }
+
+	mt_temp->max_cached_dir_slots_sizein_byte = COMP_MAX_CACHED_DIR_SLOTS_SIZEIN_BYTE ;//100352; //should be lack of 2048, but now no.
+    //mt_temp->max_cached_dir_slots_sizein_byte = MAX_CACHED_DIR_SLOTS_SIZE * (1- COMP_VS_UNCOMP_IN_DFTL_BUFFER); 
+    //uncompression part
+	mt_temp->uncompression_max_cached_dir_slots_sizein_byte = UNCOMP_MAX_CACHED_ENTRY_SIZEIN_BYTE;
+    //mt_temp->uncompression_max_cached_dir_slots_sizein_byte = MAX_CACHED_DIR_SLOTS_SIZE * (COMP_VS_UNCOMP_IN_DFTL_BUFFER); 
+    mt_temp->uncompression_now_cached_dir_slots_sizein_byte = 0;
+#else
+
+    mt_temp->max_cached_dir_slots_sizein_byte = MAX_CACHED_DIR_SLOTS_SIZE; 
+    //uncompression part
+    mt_temp->uncompression_max_cached_dir_slots_sizein_byte = 0; 
+    mt_temp->uncompression_now_cached_dir_slots_sizein_byte = 0;
+#endif
+
+    mt_temp->now_cached_dir_slots_sizein_byte = 0;
+    mt_temp->max_cached_entries_sizein_byte = 0;
+    mt_temp->now_cached_entries_sizein_byte = 0;
+
+#ifdef COMPRESSION_MAPPING 
+    mt_temp->compression_size = (unsigned int*)malloc(sizeof(unsigned int) * translation_page_num);
+    mt_temp->compression_state = (unsigned int*)malloc(sizeof(unsigned int) * translation_page_num);
+    mt_temp->compression_dirty = (unsigned int*)malloc(sizeof(unsigned int) * translation_page_num);
+    memset(mt_temp->compression_size, 0, sizeof(unsigned int)* translation_page_num);
+    memset(mt_temp->compression_state, 0, sizeof(unsigned int)* translation_page_num);
+    memset(mt_temp->compression_dirty, 0, sizeof(unsigned int)* translation_page_num);
+#else
+    mt_temp->compression_size = NULL;
+    mt_temp->compression_state = NULL;
+    mt_temp->compression_dirty = NULL;
+#endif
+
+
+
+
+    mt_temp->dir = (directory_slot_t*) malloc (sizeof(directory_slot_t)* mt_temp->nr_total_dir_slots);
+    //initialize directory slots
+    for(i = 0; i < mt_temp->nr_total_dir_slots; i++ ){
+        directory_slot_t* ds = &mt_temp->dir[i];
+        ds->id = i;
+        ds->status = DFTL_DIR_EMPTY;
+        ds->is_under_load = 0;
+        ds->phyaddr.channel = DFTL_PAGE_INVALID_ADDR; 
+        ds->phyaddr.chip = DFTL_PAGE_INVALID_ADDR; 
+        ds->phyaddr.die = DFTL_PAGE_INVALID_ADDR; 
+        ds->phyaddr.plane = DFTL_PAGE_INVALID_ADDR; 
+        ds->phyaddr.block = DFTL_PAGE_INVALID_ADDR; 
+        ds->phyaddr.page = DFTL_PAGE_INVALID_ADDR; 
+        ds->me = NULL;
+    }
+
+    ssdsim_msg("DFTL: mapping_entry_size : %lld",mt_temp->mapping_entry_size             );
+    ssdsim_msg("DFTL: nr_entries_per_dir_slot : %lld",mt_temp->nr_entries_per_dir_slot        );
+    ssdsim_msg("DFTL: nr_total_dir_slots: %lld",mt_temp->nr_total_dir_slots              );
+    ssdsim_msg("DFTL: max_cached_dir_slots_sizein_byte: %lld",mt_temp->max_cached_dir_slots_sizein_byte);
+    ssdsim_msg("DFTL: now_cached_dir_slots_sizein_byt: %lld",mt_temp->now_cached_dir_slots_sizein_byte);
+    ssdsim_msg("DFTL: uncompression_max_cached_dir_slots_sizein_byte: %lld",mt_temp->uncompression_max_cached_dir_slots_sizein_byte);
+    ssdsim_msg("DFTL: uncompression_now_cached_dir_slots_sizein_byte: %lld",mt_temp->uncompression_now_cached_dir_slots_sizein_byte);
+
+    ssdsim_msg("the macro definition values here: page_number is %d, NUM_ENTRIES_PER_DIR is %d, translaton_page_num is %d", page_num_temp, NUM_ENTRIES_PER_DIR, translation_page_num);
+
+    return mt_temp;
+#endif
+
+
+
+    //for the granularity of enty in DFTL_buffer
+#ifdef ENTRY_UNIT
+    if(mt_temp->buffer_DFTL == NULL){
+        ssdsim_msg("wrong in malloc in avlTree for DFTL");
+    }
+    mt_temp->mapping_entry_size = MAPPING_ENTRY_SIZE;// 2*4  bytes;
+    mt_temp->nr_entries_per_dir_slot = -1;
+    mt_temp->nr_total_dir_slots = -1; 
+    mt_temp->max_cached_dir_slots_sizein_byte = 0; 
+    mt_temp->now_cached_dir_slots_sizein_byte = 0;
+    mt_temp->max_cached_entries_sizein_byte = MAX_CACHED_ENTRIES_SIZE;
+    mt_temp->now_cached_entries_sizein_byte = 0;
+    mt_temp->dir = NULL;
+
+
+    //    mt_temp->dir = (directory_slot_t*) malloc (sizeof(directory_slot_t)* mt_temp->nr_total_dir_slots);
+    ////initialize directory slots
+    //    for(i = 0; i < mt_temp->nr_total_dir_slots; i++ ){
+    //        directory_slot_t* ds = &mt_temp->dir[i];
+    //        ds->id = i;
+    //        ds->status = DFTL_DIR_EMPTY;
+    //        ds->is_under_load = 0;
+    //        ds->phyaddr.channel = DFTL_PAGE_INVALID_ADDR; 
+    //        ds->phyaddr.chip = DFTL_PAGE_INVALID_ADDR; 
+    //        ds->phyaddr.die = DFTL_PAGE_INVALID_ADDR; 
+    //        ds->phyaddr.plane = DFTL_PAGE_INVALID_ADDR; 
+    //        ds->phyaddr.block = DFTL_PAGE_INVALID_ADDR; 
+    //        ds->phyaddr.page = DFTL_PAGE_INVALID_ADDR; 
+    //        ds->me = NULL;
+    //
+    //
+    //    }
+
+    ssdsim_msg("DFTL: mapping_entry_size : %lld",mt_temp->mapping_entry_size             );
+    ssdsim_msg("DFTL: max_cached_entries_sizein_byte: %lld",mt_temp->max_cached_entries_sizein_byte);
+    ssdsim_msg("DFTL: now_cached_entries_sizein_byte: %lld",mt_temp->now_cached_entries_sizein_byte);
+
+
+
+    return mt_temp;
+#endif
+}//end of dftl_create_mapping_table 
+
+
 
 struct dram_info *initialize_dram(struct ssd_info *ssd) {
     unsigned int page_num;
@@ -187,6 +366,13 @@ struct dram_info *initialize_dram(struct ssd_info *ssd) {
     dram->map = (struct map_info *) malloc(sizeof(struct map_info));
     alloc_assert(dram->map, "dram->map");
     memset(dram->map, 0, sizeof(struct map_info));
+
+//lxc for compression
+    dram->mt = dftl_create_mapping_table (ssd);
+
+
+
+
 
     page_num = ssd->parameter->page_block * ssd->parameter->block_plane * ssd->parameter->plane_die *
                ssd->parameter->die_chip * ssd->parameter->chip_num;
